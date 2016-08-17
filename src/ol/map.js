@@ -616,13 +616,12 @@ ol.Map.prototype.forEachFeatureAtPixel = function(pixel, callback, opt_this, opt
   if (!this.frameState_) {
     return;
   }
-  var coordinate = this.getCoordinateFromPixel(pixel);
   var thisArg = opt_this !== undefined ? opt_this : null;
   var layerFilter = opt_layerFilter !== undefined ?
       opt_layerFilter : ol.functions.TRUE;
   var thisArg2 = opt_this2 !== undefined ? opt_this2 : null;
-  return this.renderer_.forEachFeatureAtCoordinate(
-      coordinate, this.frameState_, callback, thisArg,
+  return this.renderer_.forEachFeatureAtPixel(
+      pixel, this.frameState_, callback, thisArg,
       layerFilter, thisArg2);
 };
 

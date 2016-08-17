@@ -140,6 +140,10 @@ ol.renderer.canvas.VectorLayer.prototype.composeFrame = function(frameState, lay
       // restore original transform for render and compose events
       transform = this.getTransform(frameState, 0);
     }
+
+    //Update spatial index
+    replayGroup.processFeatureExtents();
+
     ol.render.canvas.rotateAtOffset(replayContext, rotation,
         width / 2, height / 2);
 
@@ -152,6 +156,100 @@ ol.renderer.canvas.VectorLayer.prototype.composeFrame = function(frameState, lay
 
   this.dispatchPostComposeEvent(context, frameState, transform);
 
+};
+
+
+/**
+ * @param {ol.Pixel} pixel Pixel.
+ * @param {olx.FrameState} frameState Frame state.
+ * @param {function(this: S, (ol.Feature|ol.render.Feature), ol.layer.Layer): T}
+ *     callback Feature callback.
+ * @param {S} thisArg Value to use as `this` when executing `callback`.
+ */
+ol.renderer.canvas.VectorLayer.prototype.forEachFeatureAtPixel = function(
+  pixel, frameState, callback, thisArg
+) {
+  if (!this.replayGroup_) {
+    return undefined;
+  } else {
+    var resolution = frameState.viewState.resolution;
+    var rotation = frameState.viewState.rotation;
+    var pixelRatio = frameState.pixelRatio;
+    var layer = this.getLayer();
+    /** @type {Object.<string, boolean>} */
+    var features = {};
+
+    var coordinate = this.getClampedCoordinate_(pixel, frameState);
+
+    return this.replayGroup_.forEachFeatureAtPixel(pixel, coordinate,
+      resolution, rotation, pixelRatio, {},
+      /**
+       * @param {ol.Feature|ol.render.Feature} feature Feature.
+       * @return {?} Callback result.
+       */
+      function(feature) {
+        goog.asserts.assert(feature !== undefined, 'received a feature');
+        var key = goog.getUid(feature).toString();
+        if (!(key in features)) {
+          features[key] = true;
+          return callback.call(thisArg, feature, layer);
+        }
+      });
+  }
+};
+
+
+/**
+ * Return the coordinate represented by the pixel within the projection extent.
+ * @param {ol.Pixel} pixel
+ * @param frameState
+ * @returns {ol.Coordinate}
+ * @private
+ */
+ol.renderer.canvas.VectorLayer.prototype.getClampedCoordinate_ = function(pixel, frameState) {
+  var viewState = frameState.viewState;
+  var projection = viewState.projection;
+  var projectionExtent = projection.getExtent();
+  var vectorSource = this.getLayer().getSource();
+  var pixelToCoordMatrix = frameState.pixelToCoordinateMatrix;
+
+  var vec2 = pixel.slice();
+  var coordinate = ol.vec.Mat4.multVec2(pixelToCoordMatrix, vec2, vec2);
+
+  /** @type {ol.Extent} */
+  var extent = [coordinate[0], coordinate[1], coordinate[0], coordinate[1]];
+
+  /** @type {ol.Coordinate} */
+  var result = coordinate;
+
+  if (vectorSource.getWrapX() && projection.canWrapX() &&
+    !ol.extent.containsExtent(projectionExtent, extent)) {
+
+    //Equivalent coordinate is not in the projection extent. Offset required
+    var startX = extent[0];
+    var worldWidth = ol.extent.getWidth(projectionExtent);
+    var world = 0;
+    var offsetX = 0;
+
+    if (startX < projectionExtent[0]) {
+      while (startX < projectionExtent[0]) {
+        --world;
+        offsetX = worldWidth * world;
+        startX += worldWidth;
+      }
+    } else if (startX > projectionExtent[0]) {
+      while (startX > projectionExtent[2]) {
+        ++world;
+        offsetX = worldWidth * world;
+        startX -= worldWidth;
+      }
+    }
+
+    coordinate[0] -= offsetX;
+    result = coordinate;
+  }
+
+  return result;
 };
 
 
@@ -266,6 +364,7 @@ ol.renderer.canvas.VectorLayer.prototype.prepareFrame = function(frameState, lay
           ol.renderer.vector.getTolerance(resolution, pixelRatio), extent,
           resolution, projection, vectorLayer.getRenderBuffer());
   vectorSource.loadFeatures(extent, resolution, projection);
+
   /**
    * @param {ol.Feature} feature Feature.
    * @this {ol.renderer.canvas.VectorLayer}

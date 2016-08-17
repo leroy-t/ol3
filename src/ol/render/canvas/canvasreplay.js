@@ -1,6 +1,7 @@
 // FIXME add option to apply snapToPixel to all coordinates?
 // FIXME can eliminate empty set styles and strokes (when all geoms skipped)
 
+goog.provide('ol.render.canvas.SpatialIndex');
 goog.provide('ol.render.canvas.ImageReplay');
 goog.provide('ol.render.canvas.LineStringReplay');
 goog.provide('ol.render.canvas.PolygonReplay');
@@ -33,6 +34,7 @@ goog.require('ol.style.FillRenderArgs');
 goog.require('ol.style.TextRenderArgs');
 
 goog.require('ol.render.canvas.CustomRenderingReplay');
+goog.require('ol.ext.rbush');
 
 /**
  * @enum {number}
@@ -59,6 +61,81 @@ ol.render.canvas.Instruction = {
 
 
 /**
+ * @classdesc
+ * A spatial index basic implementation for hit detection fastening.
+ *
+ * @constructor
+ * @api stable
+ */
+ol.render.canvas.SpatialIndex = function() {
+  /**
+   * @private
+   */
+  this.rbush_ = ol.ext.rbush();
+};
+
+
+/**
+ * Load a set of items in bulk. Faster than adding them one by one.
+ * @param {Array<ol.RBushEntry>} items
+ */
+ol.render.canvas.SpatialIndex.prototype.load = function(items) {
+  if (!items) {
+    return;
+  }
+
+  this.rbush_.load(items);
+};
+
+
+/**
+ */
+ol.render.canvas.SpatialIndex.prototype.clear = function() {
+  this.rbush_.clear();
+};
+
+
+/**
+ * Returns the features under the provided pixel.
+ * @param {ol.Pixel} pixel
+ * @returns {Array<ol.Feature>}
+ */
+ol.render.canvas.SpatialIndex.prototype.getAtPixel = function(pixel) {
+  /** @type {ol.RBushEntry} */
+  var bbox = {
+    minX: pixel[0],
+    minY: pixel[1],
+    maxX: pixel[0],
+    maxY: pixel[1]
+  };
+  var items = this.rbush_.search(bbox);
+  return items.map(function(item) {
+    return item.value;
+  });
+};
+
+
+/**
+ * Returns the features contained or intersecting the provided extent.
+ * @param {ol.Extent} extent
+ * @returns {Array<ol.Feature>}
+ */
+ol.render.canvas.SpatialIndex.prototype.getInExtent = function(extent) {
+  /** @type {ol.RBushEntry} */
+  var bbox = {
+    minX: extent[0],
+    minY: extent[1],
+    maxX: extent[2],
+    maxY: extent[3]
+  };
+  var items = this.rbush_.search(bbox);
+  return items.map(function(item) {
+    return item.value;
+  });
+};
+
+
+/**
  * @constructor
  * @extends {ol.render.VectorContext}
  * @param {number} tolerance Tolerance.
@@ -70,6 +147,12 @@ ol.render.canvas.Instruction = {
  */
 ol.render.canvas.Replay = function(tolerance, maxExtent, resolution, projection) {
   ol.render.VectorContext.call(this);
+
+  /**
+   * @protected
+   * @type {ol.render.canvas.ReplayGroup}
+   */
+  this.parentGroup = null;
 
   /**
    * @protected
@@ -163,9 +246,14 @@ ol.render.canvas.Replay = function(tolerance, maxExtent, resolution, projection)
    * @type {!goog.vec.Mat4.Number}
    */
   this.tmpLocalTransformInv_ = goog.vec.Mat4.createNumber();
+
+  /**
+   * @type {ol.Extent}
+   * @private
+   */
+  this.featureExtent_ = [];
 };
 ol.inherits(ol.render.canvas.Replay, ol.render.VectorContext);
-
 
 /**
  * @param {Array.<number>} flatCoordinates Flat coordinates.
@@ -232,6 +320,7 @@ ol.render.canvas.Replay.prototype.beginGeometry = function(geometry, feature) {
   this.beginGeometryInstruction1_ =
       [ol.render.canvas.Instruction.BEGIN_GEOMETRY, feature, 0];
   this.instructions.push(this.beginGeometryInstruction1_);
+
   this.beginGeometryInstruction2_ =
       [ol.render.canvas.Instruction.BEGIN_GEOMETRY, feature, 0];
   this.hitDetectionInstructions.push(this.beginGeometryInstruction2_);
@@ -252,12 +341,14 @@ ol.render.canvas.Replay.prototype.beginGeometry = function(geometry, feature) {
  * @param {ol.Extent=} opt_hitExtent Only check features that intersect this
  *     extent.
  * @param {olx.FrameState=} opt_frameState FrameState.
+ * @param {function((ol.Feature|ol.render.Feature)): boolean=} opt_featureFilter Only check features when this function
+ * returns true.
  * @return {T|undefined} Callback result.
  * @template T
  */
 ol.render.canvas.Replay.prototype.replay_ = function(
     context, pixelRatio, transform, viewRotation, skippedFeaturesHash,
-    instructions, featureCallback, opt_hitExtent, opt_frameState) {
+    instructions, featureCallback, opt_hitExtent, opt_frameState, opt_featureFilter) {
   /** @type {Array.<number>} */
   var pixelCoordinates;
   if (ol.vec.Mat4.equals2D(transform, this.renderedTransform_)) {
@@ -285,15 +376,26 @@ ol.render.canvas.Replay.prototype.replay_ = function(
     switch (type) {
       case ol.render.canvas.Instruction.BEGIN_GEOMETRY:
         feature = /** @type {ol.Feature|ol.render.Feature} */ (instruction[1]);
-        if ((skipFeatures &&
-            skippedFeaturesHash[goog.getUid(feature).toString()]) ||
-            !feature.getGeometry()) {
-          i = /** @type {number} */ (instruction[2]);
-        } else if (opt_hitExtent !== undefined && !ol.extent.intersects(
-            opt_hitExtent, feature.getGeometry().getExtent())) {
-          i = /** @type {number} */ (instruction[2]);
-        } else {
-          ++i;
+        if (opt_featureFilter) {
+          if (!opt_featureFilter(feature)) {
+            i = /** @type {number} */ (instruction[2]);
+          }
+          else {
+            this.featureExtent_ = [Number.MAX_VALUE, Number.MAX_VALUE, Number.MIN_VALUE, Number.MIN_VALUE];
+            ++i;
+          }
+        }
+        else {
+          if ((skipFeatures &&
+            skippedFeaturesHash[goog.getUid(feature).toString()]) || !feature.getGeometry()) {
+            i = /** @type {number} */ (instruction[2]);
+          } else if (opt_hitExtent !== undefined && !ol.extent.intersects(
+              opt_hitExtent, feature.getGeometry().getExtent())) {
+            i = /** @type {number} */ (instruction[2]);
+          } else {
+            this.featureExtent_ = [Number.MAX_VALUE, Number.MAX_VALUE, Number.MIN_VALUE, Number.MIN_VALUE];
+            ++i;
+          }
         }
         break;
       case ol.render.canvas.Instruction.BEGIN_PATH:
@@ -312,6 +414,10 @@ ol.render.canvas.Replay.prototype.replay_ = function(
         var dy = y2 - y1;
         var r = Math.sqrt(dx * dx + dy * dy);
         context.arc(x1, y1, r, 0, 2 * Math.PI, true);
+
+        //Set the extent of the feature
+        this.featureExtent_ = [x1 - r, y1 - r, x1 + r, y1 + r];
+
         ++i;
         break;
       case ol.render.canvas.Instruction.CLOSE_PATH:
@@ -339,6 +445,27 @@ ol.render.canvas.Replay.prototype.replay_ = function(
         var scale = /** @type {number} */ (instruction[12]);
         var snapToPixel = /** @type {boolean} */ (instruction[13]);
         var width = /** @type {number} */ (instruction[14]);
+
+        var imageRenderArgs = new ol.style.ImageRenderArgs(
+            this.tolerance,
+            this.maxExtent,
+            this.resolution,
+            null, //Projection not needed
+            [anchorX, anchorY],
+            [originX, originY],
+            [width, height],
+            opacity,
+            scale,
+            rotation,
+            rotateWithView,
+            snapToPixel
+          );
+
+        imageRenderArgs.pixelRatio = pixelRatio;
+
+        this.featureExtent_ = imageRenderArgs.getExtent(
+          [pixelCoordinates[d], pixelCoordinates[d + 1]], 0);
+
         if (rotateWithView) {
           rotation += viewRotation;
         }
@@ -421,6 +548,26 @@ ol.render.canvas.Replay.prototype.replay_ = function(
         for (; d < dd; d += 2) {
           x = pixelCoordinates[d] + offsetX;
           y = pixelCoordinates[d + 1] + offsetY;
+
+          var textRenderArgs = new ol.style.TextRenderArgs(
+            this.tolerance,
+            this.maxExtent,
+            this.resolution,
+            null, //Projection not needed
+            context.font,
+            offsetX,
+            offsetY,
+            scale,
+            rotation,
+            text,
+            context.textAlign,
+            context.textBaseline,
+            null,
+            null
+          );
+
+          this.featureExtent_ = textRenderArgs.getExtent([x, y], context, 0);
+
           if (scale != 1 || rotation !== 0) {
             ol.vec.Mat4.makeTransform2D(
                 localTransform, x, y, scale, scale, rotation, -x, -y);
@@ -474,15 +621,20 @@ ol.render.canvas.Replay.prototype.replay_ = function(
         ++i;
         break;
       case ol.render.canvas.Instruction.END_GEOMETRY:
+        feature =
+        /** @type {ol.Feature|ol.render.Feature} */ (instruction[1]);
         if (featureCallback !== undefined) {
-          feature =
-              /** @type {ol.Feature|ol.render.Feature} */ (instruction[1]);
           var result = featureCallback(feature);
           if (result) {
             return result;
           }
         }
         ++i;
+        //Convert ol.Extent to the structure expected by RBush
+        if (this.parentGroup) {
+          this.parentGroup.addFeatureExtent(this.featureExtent_, feature);
+        }
+        this.featureExtent_ = null;
         break;
       case ol.render.canvas.Instruction.FILL:
         context.fill();
@@ -509,6 +661,24 @@ ol.render.canvas.Replay.prototype.replay_ = function(
           y = pixelCoordinates[d + 1];
           roundX = (x + 0.5) | 0;
           roundY = (y + 0.5) | 0;
+
+          //Update the feature extent
+          if (roundX < this.featureExtent_[0]) {
+            this.featureExtent_[0] = roundX;
+          }
+
+          if (roundY < this.featureExtent_[1]) {
+            this.featureExtent_[1] = roundY;
+          }
+
+          if (roundX > this.featureExtent_[2]) {
+            this.featureExtent_[2] = roundX;
+          }
+
+          if (roundY > this.featureExtent_[3]) {
+            this.featureExtent_[3] = roundY;
+          }
+
           if (d == dd - 2 || roundX !== prevX || roundY !== prevY) {
             context.lineTo(x, y);
             prevX = roundX;
@@ -625,6 +795,11 @@ ol.render.canvas.Replay.prototype.replay_ = function(
 
         instruction[3].pixelRatio = pixelRatio;
 
+        //Compute the extent of the feature
+        this.featureExtent_ =  instruction[2](context, pixelCoordinates.slice(instruction[5], instruction[6]),
+          instruction[3], instruction[4], pixelRatio);
+
+        //Render the feature
         instruction[1](context, pixelCoordinates.slice(instruction[5], instruction[6]),
           instruction[3], instruction[4], pixelRatio);
         ++i;
@@ -669,15 +844,16 @@ ol.render.canvas.Replay.prototype.replay = function(
  *     Feature callback.
  * @param {ol.Extent=} opt_hitExtent Only check features that intersect this
  *     extent.
+ * @param {function((ol.Feature|ol.render.Feature)): boolean=} opt_featureFilter Only check features when this function
+ * returns true.
  * @return {T|undefined} Callback result.
  * @template T
  */
-ol.render.canvas.Replay.prototype.replayHitDetection = function(
-    context, transform, viewRotation, skippedFeaturesHash,
-    opt_featureCallback, opt_hitExtent) {
+ol.render.canvas.Replay.prototype.replayHitDetection = function(context, transform, viewRotation, skippedFeaturesHash,
+    opt_featureCallback, opt_hitExtent, opt_featureFilter) {
   var instructions = this.hitDetectionInstructions;
   return this.replay_(context, 1, transform, viewRotation,
-      skippedFeaturesHash, instructions, opt_featureCallback, opt_hitExtent);
+      skippedFeaturesHash, instructions, opt_featureCallback, opt_hitExtent, undefined, opt_featureFilter);
 };
 
 
@@ -2634,6 +2810,12 @@ ol.render.canvas.ReplayGroup = function(
     tolerance, maxExtent, resolution, projection, opt_renderBuffer) {
 
   /**
+   * @type {Array<ol.RBushEntry>}
+   * @private
+   */
+  this.featureExtents_ = [];
+
+  /**
    * @private
    * @type {number}
    */
@@ -2682,8 +2864,56 @@ ol.render.canvas.ReplayGroup = function(
    */
   this.hitDetectionTransform_ = goog.vec.Mat4.createNumber();
 
+
+  /**
+   * A spatial index storing the extent in pixels of all the features.
+   * @type {ol.render.canvas.SpatialIndex}
+   * @private
+   */
+  this.spatialIndex_ = new ol.render.canvas.SpatialIndex();
 };
 
+
+/**
+ * @return {ol.render.canvas.SpatialIndex}
+ */
+ol.render.canvas.ReplayGroup.prototype.getSpatialIndex = function() {
+  return this.spatialIndex_;
+};
+
+
+/**
+ * Store a Feature and its extent for later insertion in RBush.
+ * @param {ol.Extent} extent
+ * @param {ol.Feature|ol.render.Feature} feature
+ */
+ol.render.canvas.ReplayGroup.prototype.addFeatureExtent = function(extent, feature) {
+  if (!extent || !feature) {
+    return;
+  }
+
+  var item = {
+    minX: extent[0],
+    minY: extent[1],
+    maxX: extent[2],
+    maxY: extent[3],
+    value: feature
+  };
+
+  this.featureExtents_.push(item);
+};
+
+
+/**
+ * Update the spatial index of the layer with the features extents.
+ */
+ol.render.canvas.ReplayGroup.prototype.processFeatureExtents = function() {
+  if (this.spatialIndex_) {
+    this.spatialIndex_.clear();
+    this.spatialIndex_.load(this.featureExtents_);
+  }
+  this.featureExtents_ = [];
+};
 
 /**
  * FIXME empty description for jsdoc
@@ -2701,6 +2931,69 @@ ol.render.canvas.ReplayGroup.prototype.finish = function() {
 
 
 /**
+ * @param {ol.Pixel} pixel Pixel.
+ * @param {ol.Coordinate} coordinate The coordinate represented by the pixel.
+ * @param {number} resolution Resolution.
+ * @param {number} rotation Rotation.
+ * @param {number} pixelRatio Pixel ratio of the device.
+ * @param {Object.<string, boolean>} skippedFeaturesHash Ids of features
+ *     to skip.
+ * @param {function((ol.Feature|ol.render.Feature)): T} callback Feature
+ *     callback.
+ * @return {T|undefined} Callback result.
+ * @template T
+ */
+ol.render.canvas.ReplayGroup.prototype.forEachFeatureAtPixel = function(
+  pixel, coordinate, resolution, rotation, pixelRatio, skippedFeaturesHash, callback) {
+
+  //Pixel provided as pointer event args do not take pixel ratio into account
+  pixel = [pixel[0] * pixelRatio, pixel[1] * pixelRatio];
+
+  var size = [
+    this.hitDetectionContext_.canvas.width,
+    this.hitDetectionContext_.canvas.height
+  ];
+  var transform = this.hitDetectionTransform_;
+  ol.vec.Mat4.makeTransform2D(transform,
+    1 * size[0] / 2,
+    1 * size[1] / 2,
+    1 / resolution,
+    -1 / resolution,
+    -rotation,
+    -coordinate[0],
+    -coordinate[1]);
+
+  var context = this.hitDetectionContext_;
+  context.clearRect(0, 0, 1, 1);
+
+  var hitDetectionTolerance = 0;
+
+  /**
+   * @type {ol.Extent}
+   */
+  var hitExtent = [pixel[0] - hitDetectionTolerance, pixel[1] - hitDetectionTolerance,
+    pixel[0] + hitDetectionTolerance, pixel[1] + hitDetectionTolerance];
+
+  return this.replayHitDetection_(context, transform, rotation,
+    skippedFeaturesHash,
+    /**
+     * @param {ol.Feature|ol.render.Feature} feature Feature.
+     * @return {?} Callback result.
+     */
+    function(feature) {
+      var imageData = context.getImageData(0, 0, 1, 1).data;
+      if (imageData[3] > 0) {
+        var result = callback(feature);
+        if (result) {
+          return result;
+        }
+        context.clearRect(0, 0, 1, 1);
+      }
+    }, hitExtent);
+};
+
+
+/**
  * @param {ol.Coordinate} coordinate Coordinate.
  * @param {number} resolution Resolution.
  * @param {number} rotation Rotation.
@@ -2714,10 +3007,20 @@ ol.render.canvas.ReplayGroup.prototype.finish = function() {
 ol.render.canvas.ReplayGroup.prototype.forEachFeatureAtCoordinate = function(
     coordinate, resolution, rotation, skippedFeaturesHash, callback) {
 
+  var pixelRatio = 1;
+  var size = [
+    this.hitDetectionContext_.canvas.width,
+    this.hitDetectionContext_.canvas.height
+  ];
   var transform = this.hitDetectionTransform_;
-  ol.vec.Mat4.makeTransform2D(transform, 0.5, 0.5,
-      1 / resolution, -1 / resolution, -rotation,
-      -coordinate[0], -coordinate[1]);
+  ol.vec.Mat4.makeTransform2D(transform,
+    pixelRatio * size[0] / 2,
+    pixelRatio * size[1] / 2,
+    pixelRatio / resolution,
+    -pixelRatio / resolution,
+    -rotation,
+    -coordinate[0],
+    -coordinate[1]);
 
   var context = this.hitDetectionContext_;
   context.clearRect(0, 0, 1, 1);
@@ -2771,6 +3074,10 @@ ol.render.canvas.ReplayGroup.prototype.getReplay = function(zIndex, replayType) 
         this.resolution_, this.projection_);
     replays[replayType] = replay;
   }
+
+  //Set the parent group of the replay
+  replay.parentGroup = this;
+
   return replay;
 };
 
@@ -2846,7 +3153,7 @@ ol.render.canvas.ReplayGroup.prototype.replay = function(context, pixelRatio,
  *     to skip.
  * @param {function((ol.Feature|ol.render.Feature)): T} featureCallback
  *     Feature callback.
- * @param {ol.Extent=} opt_hitExtent Only check features that intersect this
+ * @param {ol.Extent} opt_hitExtent Only check features that intersect this
  *     extent.
  * @return {T|undefined} Callback result.
  * @template T
@@ -2854,6 +3161,21 @@ ol.render.canvas.ReplayGroup.prototype.replay = function(context, pixelRatio,
 ol.render.canvas.ReplayGroup.prototype.replayHitDetection_ = function(
     context, transform, viewRotation, skippedFeaturesHash,
     featureCallback, opt_hitExtent) {
+
+  var featureMap = {};
+  if (opt_hitExtent) {
+    //Get the list of features to check
+    var features = this.spatialIndex_.getInExtent(opt_hitExtent);
+    for (var i = 0; i < features.length; i++) {
+      var feature = features[i];
+      featureMap[goog.getUid(feature).toString()] = feature;
+    }
+  }
+
+  var featureFilter = function(feature) {
+    return featureMap[goog.getUid(feature).toString()];
+  };
+
   /** @type {Array.<number>} */
   var zs = Object.keys(this.replaysByZIndex_).map(Number);
   zs.sort(function(a, b) {
@@ -2867,7 +3189,7 @@ ol.render.canvas.ReplayGroup.prototype.replayHitDetection_ = function(
       replay = replays[ol.render.REPLAY_ORDER[j]];
       if (replay !== undefined) {
         result = replay.replayHitDetection(context, transform, viewRotation,
-            skippedFeaturesHash, featureCallback, opt_hitExtent);
+            skippedFeaturesHash, featureCallback, opt_hitExtent, featureFilter);
         if (result) {
           return result;
         }

@@ -38,6 +38,18 @@ ol.inherits(ol.renderer.Layer, ol.Observable);
 
 
 /**
+ * @param {ol.Pixel} pixel Pixel.
+ * @param {olx.FrameState} frameState Frame state.
+ * @param {function(this: S, (ol.Feature|ol.render.Feature), ol.layer.Layer): T}
+ *     callback Feature callback.
+ * @param {S} thisArg Value to use as `this` when executing `callback`.
+ * @return {T|undefined} Callback result.
+ * @template S,T
+ */
+ol.renderer.Layer.prototype.forEachFeatureAtPixel = ol.nullFunction;
+
+
+/**
  * @param {ol.Coordinate} coordinate Coordinate.
  * @param {olx.FrameState} frameState Frame state.
  * @param {function(this: S, (ol.Feature|ol.render.Feature), ol.layer.Layer): T}

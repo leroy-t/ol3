@@ -109,6 +109,60 @@ ol.renderer.Map.expireIconCache_ = function(map, frameState) {
 
 
 /**
+ * @param {ol.Pixel} pixel Pixel.
+ * @param {olx.FrameState} frameState FrameState.
+ * @param {function(this: S, (ol.Feature|ol.render.Feature),
+ *     ol.layer.Layer): T} callback Feature callback.
+ * @param {S} thisArg Value to use as `this` when executing `callback`.
+ * @param {function(this: U, ol.layer.Layer): boolean} layerFilter Layer filter
+ *     function, only layers which are visible and for which this function
+ *     returns `true` will be tested for features.  By default, all visible
+ *     layers will be tested.
+ * @param {U} thisArg2 Value to use as `this` when executing `layerFilter`.
+ * @return {T|undefined} Callback result.
+ * @template S,T,U
+ */
+ol.renderer.Map.prototype.forEachFeatureAtPixel = function(pixel, frameState, callback, thisArg,
+                                                                layerFilter, thisArg2) {
+  var result;
+  var viewState = frameState.viewState;
+  var viewResolution = viewState.resolution;
+
+  /**
+   * @param {ol.Feature|ol.render.Feature} feature Feature.
+   * @param {ol.layer.Layer} layer Layer.
+   * @return {?} Callback result.
+   */
+  function forEachFeatureAtPixel(feature, layer) {
+    goog.asserts.assert(feature !== undefined, 'received a feature');
+    var key = goog.getUid(feature).toString();
+    var managed = frameState.layerStates[goog.getUid(layer)].managed;
+    if (!(key in frameState.skippedFeatureUids && !managed)) {
+      return callback.call(thisArg, feature, managed ? layer : null);
+    }
+  }
+
+  var layerStates = frameState.layerStatesArray;
+  var numLayers = layerStates.length;
+  var i;
+  for (i = numLayers - 1; i >= 0; --i) {
+    var layerState = layerStates[i];
+    var layer = layerState.layer;
+    if (ol.layer.Layer.visibleAtResolution(layerState, viewResolution) &&
+      layerFilter.call(thisArg2, layer)) {
+      var layerRenderer = this.getLayerRenderer(layer);
+      if (layer.getSource()) {
+        result = layerRenderer.forEachFeatureAtPixel(pixel, frameState, forEachFeatureAtPixel, thisArg);
+      }
+      if (result) {
+        return result;
+      }
+    }
+  }
+  return undefined;
+};
+
+/**
  * @param {ol.Coordinate} coordinate Coordinate.
  * @param {olx.FrameState} frameState FrameState.
  * @param {function(this: S, (ol.Feature|ol.render.Feature),
