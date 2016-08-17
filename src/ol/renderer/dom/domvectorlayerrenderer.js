@@ -274,7 +274,7 @@ ol.renderer.dom.VectorLayer.prototype.prepareFrame = function(frameState, layerS
   var replayGroup =
       new ol.render.canvas.ReplayGroup(
           ol.renderer.vector.getTolerance(resolution, pixelRatio), extent,
-          resolution, vectorLayer.getRenderBuffer());
+          resolution, projection, vectorLayer.getRenderBuffer());
   vectorSource.loadFeatures(extent, resolution, projection);
   /**
    * @param {ol.Feature} feature Feature.

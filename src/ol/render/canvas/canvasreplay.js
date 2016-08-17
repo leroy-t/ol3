@@ -7,6 +7,7 @@ goog.provide('ol.render.canvas.PolygonReplay');
 goog.provide('ol.render.canvas.Replay');
 goog.provide('ol.render.canvas.ReplayGroup');
 goog.provide('ol.render.canvas.TextReplay');
+goog.provide('ol.render.canvas.CustomRenderingReplay');
 
 goog.require('goog.asserts');
 goog.require('goog.vec.Mat4');
@@ -25,7 +26,13 @@ goog.require('ol.render.IReplayGroup');
 goog.require('ol.render.VectorContext');
 goog.require('ol.render.canvas');
 goog.require('ol.vec.Mat4');
+goog.require('ol.style.ReplayArgs');
+goog.require('ol.style.ImageRenderArgs');
+goog.require('ol.style.StrokeRenderArgs');
+goog.require('ol.style.FillRenderArgs');
+goog.require('ol.style.TextRenderArgs');
 
+goog.require('ol.render.canvas.CustomRenderingReplay');
 
 /**
  * @enum {number}
@@ -43,7 +50,11 @@ ol.render.canvas.Instruction = {
   SET_FILL_STYLE: 9,
   SET_STROKE_STYLE: 10,
   SET_TEXT_STYLE: 11,
-  STROKE: 12
+  STROKE: 12,
+  PRE_RENDER: 13,
+  POST_RENDER: 14,
+  FOREGROUND_RENDER: 15,
+  CUSTOM_RENDER: 16
 };
 
 
@@ -53,10 +64,11 @@ ol.render.canvas.Instruction = {
  * @param {number} tolerance Tolerance.
  * @param {ol.Extent} maxExtent Maximum extent.
  * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
  * @protected
  * @struct
  */
-ol.render.canvas.Replay = function(tolerance, maxExtent, resolution) {
+ol.render.canvas.Replay = function(tolerance, maxExtent, resolution, projection) {
   ol.render.VectorContext.call(this);
 
   /**
@@ -90,6 +102,13 @@ ol.render.canvas.Replay = function(tolerance, maxExtent, resolution) {
    * @type {number}
    */
   this.resolution = resolution;
+
+  /**
+   * @protected
+   * @const
+   * @type {ol.proj.Projection}
+   */
+  this.projection = projection;
 
   /**
    * @private
@@ -232,12 +251,13 @@ ol.render.canvas.Replay.prototype.beginGeometry = function(geometry, feature) {
  *     featureCallback Feature callback.
  * @param {ol.Extent=} opt_hitExtent Only check features that intersect this
  *     extent.
+ * @param {olx.FrameState=} opt_frameState FrameState.
  * @return {T|undefined} Callback result.
  * @template T
  */
 ol.render.canvas.Replay.prototype.replay_ = function(
     context, pixelRatio, transform, viewRotation, skippedFeaturesHash,
-    instructions, featureCallback, opt_hitExtent) {
+    instructions, featureCallback, opt_hitExtent, opt_frameState) {
   /** @type {Array.<number>} */
   var pixelCoordinates;
   if (ol.vec.Mat4.equals2D(transform, this.renderedTransform_)) {
@@ -549,6 +569,66 @@ ol.render.canvas.Replay.prototype.replay_ = function(
         context.stroke();
         ++i;
         break;
+      case ol.render.canvas.Instruction.PRE_RENDER:
+        //Set render args properties
+        if (opt_frameState && opt_frameState.viewState) {
+          instruction[2].resolution = opt_frameState.viewState.resolution;
+          instruction[2].viewRotation = opt_frameState.viewState.rotation;
+          instruction[2].resolution = opt_frameState.viewState.resolution;
+        }
+
+        instruction[2].pixelRatio = pixelRatio;
+
+        instruction[1](context, pixelCoordinates.slice(instruction[4], instruction[5]), instruction[2], instruction[3],
+          pixelRatio);
+        ++i;
+        break;
+      case ol.render.canvas.Instruction.POST_RENDER:
+        //Set render args properties
+        if (opt_frameState && opt_frameState.viewState) {
+          instruction[2].resolution = opt_frameState.viewState.resolution;
+          instruction[2].viewRotation = opt_frameState.viewState.rotation;
+          instruction[2].resolution = opt_frameState.viewState.resolution;
+        }
+
+        instruction[2].pixelRatio = pixelRatio;
+
+        instruction[1](context, pixelCoordinates.slice(instruction[4], instruction[5]), instruction[2], instruction[3],
+          pixelRatio);
+        ++i;
+        break;
+      case ol.render.canvas.Instruction.FOREGROUND_RENDER:
+        if (opt_frameState) {
+          //Set render args properties
+          instruction[2].pixelRatio = pixelRatio;
+          instruction[2].resolution = opt_frameState.viewState.resolution;
+          instruction[2].viewRotation = opt_frameState.viewState.rotation;
+
+          var f = instruction[1];
+          var coords = pixelCoordinates.slice(instruction[4], instruction[5]);
+          var postRender = [f, context, coords, instruction[2], instruction[3], pixelRatio];
+
+          if (!opt_frameState.foregroundRenderFunctions) {
+            opt_frameState.foregroundRenderFunctions = [];
+          }
+          opt_frameState.foregroundRenderFunctions.push(postRender);
+        }
+        ++i;
+        break;
+      case ol.render.canvas.Instruction.CUSTOM_RENDER:
+        //Set render args properties
+        if (opt_frameState && opt_frameState.viewState) {
+          instruction[3].resolution = opt_frameState.viewState.resolution;
+          instruction[3].viewRotation = opt_frameState.viewState.rotation;
+          instruction[3].projection = opt_frameState.viewState.projection;
+        }
+
+        instruction[3].pixelRatio = pixelRatio;
+
+        instruction[1](context, pixelCoordinates.slice(instruction[5], instruction[6]),
+          instruction[3], instruction[4], pixelRatio);
+        ++i;
+        break;
       default:
         goog.asserts.fail('Unknown canvas render instruction');
         ++i; // consume the instruction anyway, to avoid an infinite loop
@@ -569,12 +649,13 @@ ol.render.canvas.Replay.prototype.replay_ = function(
  * @param {number} viewRotation View rotation.
  * @param {Object.<string, boolean>} skippedFeaturesHash Ids of features
  *     to skip.
+ * @param {olx.FrameState=} frameState FrameState.
  */
 ol.render.canvas.Replay.prototype.replay = function(
-    context, pixelRatio, transform, viewRotation, skippedFeaturesHash) {
+    context, pixelRatio, transform, viewRotation, skippedFeaturesHash, frameState) {
   var instructions = this.instructions;
   this.replay_(context, pixelRatio, transform, viewRotation,
-      skippedFeaturesHash, instructions, undefined);
+      skippedFeaturesHash, instructions, undefined, undefined, frameState);
 };
 
 
@@ -674,11 +755,12 @@ ol.render.canvas.Replay.prototype.getBufferedMaxExtent = function() {
  * @param {number} tolerance Tolerance.
  * @param {ol.Extent} maxExtent Maximum extent.
  * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
  * @protected
  * @struct
  */
-ol.render.canvas.ImageReplay = function(tolerance, maxExtent, resolution) {
-  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution);
+ol.render.canvas.ImageReplay = function(tolerance, maxExtent, resolution, projection) {
+  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution, projection);
 
   /**
    * @private
@@ -757,6 +839,24 @@ ol.render.canvas.ImageReplay = function(tolerance, maxExtent, resolution) {
    * @type {number|undefined}
    */
   this.width_ = undefined;
+
+  /**
+   * @private
+   * @type {ol.style.ImageRenderFunction|null}
+   */
+  this.preRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.ImageRenderFunction|null}
+   */
+  this.postRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.ImageRenderFunction|null}
+   */
+  this.foregroundRenderFunction_ = null;
 
 };
 ol.inherits(ol.render.canvas.ImageReplay, ol.render.canvas.Replay);
@@ -803,12 +903,33 @@ ol.render.canvas.ImageReplay.prototype.drawPoint = function(pointGeometry, featu
       'this.scale_ should be defined');
   goog.asserts.assert(this.width_ !== undefined,
       'this.width_ should be defined');
+
+  var args = new ol.style.ImageRenderArgs(
+    this.tolerance, this.maxExtent,
+    this.resolution, this.projection,
+    [this.anchorX_, this.anchorY_],
+    [this.originX_, this.originY_],
+    [this.width_, this.height_],
+    this.opacity_,
+    this.scale_,
+    this.rotation_,
+    this.rotateWithView_,
+    typeof this.snapToPixel_ !== "undefined"
+  );
+
   this.beginGeometry(pointGeometry, feature);
   var flatCoordinates = pointGeometry.getFlatCoordinates();
   var stride = pointGeometry.getStride();
   var myBegin = this.coordinates.length;
   var myEnd = this.drawCoordinates_(
       flatCoordinates, 0, flatCoordinates.length, stride);
+
+  //If the pre-render function is defined, execute it
+  if (this.preRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.PRE_RENDER, this.preRenderFunction_, args, feature,
+      myBegin, myEnd]);
+  }
+
   this.instructions.push([
     ol.render.canvas.Instruction.DRAW_IMAGE, myBegin, myEnd, this.image_,
     // Remaining arguments to DRAW_IMAGE are in alphabetical order
@@ -824,6 +945,19 @@ ol.render.canvas.ImageReplay.prototype.drawPoint = function(pointGeometry, featu
     this.originX_, this.originY_, this.rotateWithView_, this.rotation_,
     this.scale_, this.snapToPixel_, this.width_
   ]);
+
+  //If the post-render function is defined, execute it
+  if (this.postRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.POST_RENDER, this.postRenderFunction_, args, feature,
+      myBegin, myEnd]);
+  }
+
+  //If the foreground render function is defined, execute it
+  if (this.foregroundRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.FOREGROUND_RENDER, this.foregroundRenderFunction_, args, feature,
+      myBegin, myEnd]);
+  }
+
   this.endGeometry(pointGeometry, feature);
 };
 
@@ -855,12 +989,33 @@ ol.render.canvas.ImageReplay.prototype.drawMultiPoint = function(multiPointGeome
       'this.scale_ should be defined');
   goog.asserts.assert(this.width_ !== undefined,
       'this.width_ should be defined');
+
+  var args = new ol.style.ImageRenderArgs(
+    this.tolerance, this.maxExtent,
+    this.resolution, this.projection,
+    [this.anchorX_, this.anchorY_],
+    [this.originX_, this.originY_],
+    [this.width_, this.height_],
+    this.opacity_,
+    this.scale_,
+    this.rotation_,
+    this.rotateWithView_,
+    typeof this.snapToPixel_ !== "undefined"
+  );
+
   this.beginGeometry(multiPointGeometry, feature);
   var flatCoordinates = multiPointGeometry.getFlatCoordinates();
   var stride = multiPointGeometry.getStride();
   var myBegin = this.coordinates.length;
   var myEnd = this.drawCoordinates_(
       flatCoordinates, 0, flatCoordinates.length, stride);
+
+  //If the pre-render function is defined, execute it
+  if (this.preRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.PRE_RENDER, this.preRenderFunction_, args, feature,
+      myBegin, myEnd]);
+  }
+
   this.instructions.push([
     ol.render.canvas.Instruction.DRAW_IMAGE, myBegin, myEnd, this.image_,
     // Remaining arguments to DRAW_IMAGE are in alphabetical order
@@ -876,6 +1031,19 @@ ol.render.canvas.ImageReplay.prototype.drawMultiPoint = function(multiPointGeome
     this.originX_, this.originY_, this.rotateWithView_, this.rotation_,
     this.scale_, this.snapToPixel_, this.width_
   ]);
+
+  //If the post-render function is defined, execute it
+  if (this.postRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.POST_RENDER, this.postRenderFunction_, args, feature,
+      myBegin, myEnd]);
+  }
+
+  //If the foreground render function is defined, execute it
+  if (this.foregroundRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.FOREGROUND_RENDER, this.foregroundRenderFunction_, args, feature,
+      myBegin, myEnd]);
+  }
+
   this.endGeometry(multiPointGeometry, feature);
 };
 
@@ -899,6 +1067,10 @@ ol.render.canvas.ImageReplay.prototype.finish = function() {
   this.rotation_ = undefined;
   this.snapToPixel_ = undefined;
   this.width_ = undefined;
+
+  this.preRenderFunction_ = null;
+  this.postRenderFunction_ = null;
+  this.foregroundRenderFunction_ = null;
 };
 
 
@@ -931,6 +1103,13 @@ ol.render.canvas.ImageReplay.prototype.setImageStyle = function(imageStyle) {
   this.scale_ = imageStyle.getScale();
   this.snapToPixel_ = imageStyle.getSnapToPixel();
   this.width_ = size[0];
+
+  var preRender = imageStyle.getPreRender();
+  var postRender = imageStyle.getPostRender();
+  var foregroundRender = imageStyle.getForegroundRender();
+  this.preRenderFunction_ = preRender ? preRender : null;
+  this.postRenderFunction_ = postRender ? postRender : null;
+  this.foregroundRenderFunction_ = foregroundRender ? foregroundRender : null;
 };
 
 
@@ -940,12 +1119,13 @@ ol.render.canvas.ImageReplay.prototype.setImageStyle = function(imageStyle) {
  * @param {number} tolerance Tolerance.
  * @param {ol.Extent} maxExtent Maximum extent.
  * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
  * @protected
  * @struct
  */
-ol.render.canvas.LineStringReplay = function(tolerance, maxExtent, resolution) {
+ol.render.canvas.LineStringReplay = function(tolerance, maxExtent, resolution, projection) {
 
-  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution);
+  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution, projection);
 
   /**
    * @private
@@ -979,6 +1159,32 @@ ol.render.canvas.LineStringReplay = function(tolerance, maxExtent, resolution) {
     miterLimit: undefined
   };
 
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|null}
+   */
+  this.preRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|null}
+   */
+  this.postRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|null}
+   */
+  this.foregroundRenderFunction_ = null;
+
+  this.preRenderInstruction_ = [];
+  this.postRenderInstruction_ = [];
+  this.foregroundRenderInstruction_ = [];
+  this.setStrokeStyleInstruction_ = [];
+
+  this.pixelCoordStart_ = undefined;
+  this.pixelCoordEnd_ = undefined;
+
 };
 ol.inherits(ol.render.canvas.LineStringReplay, ol.render.canvas.Replay);
 
@@ -995,6 +1201,17 @@ ol.render.canvas.LineStringReplay.prototype.drawFlatCoordinates_ = function(flat
   var myBegin = this.coordinates.length;
   var myEnd = this.appendFlatCoordinates(
       flatCoordinates, offset, end, stride, false);
+
+  this.preRenderInstruction_[4] = myBegin;
+  this.preRenderInstruction_[5] = myEnd;
+  this.postRenderInstruction_[4] = myBegin;
+  this.postRenderInstruction_[5] = myEnd;
+  this.foregroundRenderInstruction_[4] = myBegin;
+  this.foregroundRenderInstruction_[5] = myEnd;
+
+  this.pixelCoordStart_ = myBegin;
+  this.pixelCoordEnd_ = myEnd;
+
   var moveToLineToInstruction =
       [ol.render.canvas.Instruction.MOVE_TO_LINE_TO, myBegin, myEnd];
   this.instructions.push(moveToLineToInstruction);
@@ -1047,9 +1264,12 @@ ol.render.canvas.LineStringReplay.prototype.setStrokeStyle_ = function() {
           [ol.render.canvas.Instruction.STROKE]);
       state.lastStroke = this.coordinates.length;
     }
+
+    this.setStrokeStyleInstruction_ = [ol.render.canvas.Instruction.SET_STROKE_STYLE,
+      strokeStyle, lineWidth, lineCap, lineJoin, miterLimit, lineDash, undefined];
+
     this.instructions.push(
-        [ol.render.canvas.Instruction.SET_STROKE_STYLE,
-         strokeStyle, lineWidth, lineCap, lineJoin, miterLimit, lineDash],
+        this.setStrokeStyleInstruction_,
         [ol.render.canvas.Instruction.BEGIN_PATH]);
     state.currentStrokeStyle = strokeStyle;
     state.currentLineCap = lineCap;
@@ -1058,6 +1278,26 @@ ol.render.canvas.LineStringReplay.prototype.setStrokeStyle_ = function() {
     state.currentLineWidth = lineWidth;
     state.currentMiterLimit = miterLimit;
   }
+
+  var args = new ol.style.StrokeRenderArgs(
+    this.tolerance, this.maxExtent,
+    this.resolution, this.projection,
+    strokeStyle,
+    lineCap,
+    lineDash,
+    lineJoin,
+    miterLimit,
+    lineWidth,
+    false
+  );
+
+  this.preRenderInstruction_ = [ol.render.canvas.Instruction.PRE_RENDER, null, null, null, 0, 0];
+  this.postRenderInstruction_ = [ol.render.canvas.Instruction.POST_RENDER, null, null, null, 0, 0];
+  this.foregroundRenderInstruction_ = [ol.render.canvas.Instruction.FOREGROUND_RENDER, null, null, null, 0, 0];
+
+  this.preRenderInstruction_[2] = args;
+  this.postRenderInstruction_[2] = args;
+  this.foregroundRenderInstruction_[2] = args;
 };
 
 
@@ -1084,7 +1324,41 @@ ol.render.canvas.LineStringReplay.prototype.drawLineString = function(lineString
   this.drawFlatCoordinates_(
       flatCoordinates, 0, flatCoordinates.length, stride);
   this.hitDetectionInstructions.push([ol.render.canvas.Instruction.STROKE]);
+
+  //FIX for STROKE added after END_GEOMETRY
+  if (state.lastStroke != this.coordinates.length) {
+    var strokeInstruction = [ol.render.canvas.Instruction.STROKE];
+
+    this.instructions.push(strokeInstruction);
+  }
+
   this.endGeometry(lineStringGeometry, feature);
+
+  //If the pre-render function is defined, execute it
+  if (this.preRenderFunction_) {
+    this.preRenderInstruction_[1] = this.preRenderFunction_;
+    this.preRenderInstruction_[3] = feature;
+    this.instructions.splice(0, 0, this.preRenderInstruction_);
+  }
+
+  //If the post-render function is defined, execute it
+  if (this.postRenderFunction_) {
+    this.postRenderInstruction_[1] = this.postRenderFunction_;
+    this.postRenderInstruction_[3] = feature;
+    this.instructions.push(this.postRenderInstruction_);
+
+    //Reset stroke style, as it can have been modified
+    if (this.setStrokeStyleInstruction_) {
+      this.instructions.push(this.setStrokeStyleInstruction_);
+    }
+  }
+
+  //If the foreground render function is defined, execute it
+  if (this.foregroundRenderFunction_) {
+    this.foregroundRenderInstruction_[1] = this.foregroundRenderFunction_;
+    this.foregroundRenderInstruction_[3] = feature;
+    this.instructions.push(this.foregroundRenderInstruction_);
+  }
 };
 
 
@@ -1104,7 +1378,7 @@ ol.render.canvas.LineStringReplay.prototype.drawMultiLineString = function(multi
   this.hitDetectionInstructions.push(
       [ol.render.canvas.Instruction.SET_STROKE_STYLE,
        state.strokeStyle, state.lineWidth, state.lineCap, state.lineJoin,
-       state.miterLimit, state.lineDash],
+       state.miterLimit, state.lineDash, undefined],
       [ol.render.canvas.Instruction.BEGIN_PATH]);
   var ends = multiLineStringGeometry.getEnds();
   var flatCoordinates = multiLineStringGeometry.getFlatCoordinates();
@@ -1115,8 +1389,30 @@ ol.render.canvas.LineStringReplay.prototype.drawMultiLineString = function(multi
     offset = this.drawFlatCoordinates_(
         flatCoordinates, offset, ends[i], stride);
   }
+
   this.hitDetectionInstructions.push([ol.render.canvas.Instruction.STROKE]);
   this.endGeometry(multiLineStringGeometry, feature);
+
+  //If the pre-render function is defined, execute it
+  if (this.preRenderFunction_) {
+    this.preRenderInstruction_[1] = this.preRenderFunction_;
+    this.preRenderInstruction_[3] = feature;
+    this.instructions.splice(0, 0, this.preRenderInstruction_);
+  }
+
+  //If the post-render function is defined, execute it
+  if (this.postRenderFunction_) {
+    this.postRenderInstruction_[1] = this.postRenderFunction_;
+    this.postRenderInstruction_[3] = feature;
+    this.instructions.push(this.postRenderInstruction_);
+  }
+
+  //If the foreground render function is defined, execute it
+  if (this.foregroundRenderFunction_) {
+    this.foregroundRenderInstruction_[1] = this.foregroundRenderFunction_;
+    this.foregroundRenderInstruction_[3] = feature;
+    this.instructions.push(this.foregroundRenderInstruction_);
+  }
 };
 
 
@@ -1124,13 +1420,14 @@ ol.render.canvas.LineStringReplay.prototype.drawMultiLineString = function(multi
  * @inheritDoc
  */
 ol.render.canvas.LineStringReplay.prototype.finish = function() {
-  var state = this.state_;
-  goog.asserts.assert(state, 'state should not be null');
-  if (state.lastStroke != this.coordinates.length) {
-    this.instructions.push([ol.render.canvas.Instruction.STROKE]);
-  }
   this.reverseHitDetectionInstructions_();
   this.state_ = null;
+  this.preRenderFunction_ = null;
+  this.postRenderFunction_ = null;
+  this.foregroundRenderFunction_ = null;
+  this.preRenderInstruction_ = null;
+  this.postRenderInstruction_ = null;
+  this.foregroundRenderInstruction_ = null;
 };
 
 
@@ -1165,6 +1462,28 @@ ol.render.canvas.LineStringReplay.prototype.setFillStrokeStyle = function(fillSt
     // invalidate the buffered max extent cache
     this.bufferedMaxExtent_ = null;
   }
+
+  var preRender = strokeStyle.getPreRender();
+  var postRender = strokeStyle.getPostRender();
+  var foregroundRender = strokeStyle.getForegroundRender();
+
+  if (preRender) {
+    this.preRenderFunction_ = preRender;
+  } else {
+    this.preRenderFunction_ = null;
+  }
+
+  if (postRender) {
+    this.postRenderFunction_ = postRender;
+  } else {
+    this.postRenderFunction_ = null;
+  }
+
+  if (foregroundRender) {
+    this.foregroundRenderFunction_ = foregroundRender;
+  } else {
+    this.foregroundRenderFunction_ = null;
+  }
 };
 
 
@@ -1174,12 +1493,13 @@ ol.render.canvas.LineStringReplay.prototype.setFillStrokeStyle = function(fillSt
  * @param {number} tolerance Tolerance.
  * @param {ol.Extent} maxExtent Maximum extent.
  * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
  * @protected
  * @struct
  */
-ol.render.canvas.PolygonReplay = function(tolerance, maxExtent, resolution) {
+ol.render.canvas.PolygonReplay = function(tolerance, maxExtent, resolution, projection) {
 
-  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution);
+  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution, projection);
 
   /**
    * @private
@@ -1215,6 +1535,53 @@ ol.render.canvas.PolygonReplay = function(tolerance, maxExtent, resolution) {
     miterLimit: undefined
   };
 
+  /**
+   * @private
+   * @type {ol.style.FillRenderFunction|null}
+   */
+  this.preFillRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.FillRenderFunction|null}
+   */
+  this.postFillRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.FillRenderFunction|null}
+   */
+  this.foregroundFillRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|null}
+   */
+  this.preStrokeRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|null}
+   */
+  this.postStrokeRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|null}
+   */
+  this.foregroundStrokeRenderFunction_ = null;
+
+  this.setFillStyleInstruction_ = null;
+  this.setStrokeStyleInstruction_ = null;
+  this.geometryInstructionArray_ = null;
+
+  this.preFillRenderInstruction_ = [];
+  this.postFillRenderInstruction_ = [];
+  this.foregroundFillRenderInstruction_ = [];
+
+  this.preStrokeRenderInstruction_ = [];
+  this.postStrokeRenderInstruction_ = [];
+  this.foregroundStrokeRenderInstruction_ = [];
 };
 ol.inherits(ol.render.canvas.PolygonReplay, ol.render.canvas.Replay);
 
@@ -1230,8 +1597,10 @@ ol.inherits(ol.render.canvas.PolygonReplay, ol.render.canvas.Replay);
 ol.render.canvas.PolygonReplay.prototype.drawFlatCoordinatess_ = function(flatCoordinates, offset, ends, stride) {
   var state = this.state_;
   var beginPathInstruction = [ol.render.canvas.Instruction.BEGIN_PATH];
-  this.instructions.push(beginPathInstruction);
   this.hitDetectionInstructions.push(beginPathInstruction);
+
+  this.geometryInstructionArray_ = [];
+
   var i, ii;
   for (i = 0, ii = ends.length; i < ii; ++i) {
     var end = ends[i];
@@ -1241,25 +1610,121 @@ ol.render.canvas.PolygonReplay.prototype.drawFlatCoordinatess_ = function(flatCo
     var moveToLineToInstruction =
         [ol.render.canvas.Instruction.MOVE_TO_LINE_TO, myBegin, myEnd];
     var closePathInstruction = [ol.render.canvas.Instruction.CLOSE_PATH];
-    this.instructions.push(moveToLineToInstruction, closePathInstruction);
+    this.geometryInstructionArray_.push(moveToLineToInstruction, closePathInstruction);
     this.hitDetectionInstructions.push(moveToLineToInstruction,
         closePathInstruction);
     offset = end;
   }
+
+  //Set 'ends' properties of the args
+  if (this.preFillRenderInstruction_[2]) {
+    this.preFillRenderInstruction_[2].setEnds(ends);
+  }
+
+  if (this.postFillRenderInstruction_[2]) {
+    this.postFillRenderInstruction_[2].setEnds(ends);
+  }
+
+  if (this.foregroundFillRenderInstruction_[2]) {
+    this.foregroundFillRenderInstruction_[2].setEnds(ends);
+  }
+
+  if (this.preStrokeRenderInstruction_[2]) {
+    this.preStrokeRenderInstruction_[2].setEnds(ends);
+  }
+
+  if (this.postStrokeRenderInstruction_[2]) {
+    this.postStrokeRenderInstruction_[2].setEnds(ends);
+  }
+
+  if (this.foregroundStrokeRenderInstruction_[2]) {
+    this.foregroundStrokeRenderInstruction_[2].setEnds(ends);
+  }
+
+  var startOffset = this.geometryInstructionArray_[0][1];
+  var endOffset = this.geometryInstructionArray_[this.geometryInstructionArray_.length - 2][2];
+  this.preFillRenderInstruction_[4] = startOffset;
+  this.postFillRenderInstruction_[4] = startOffset;
+  this.foregroundFillRenderInstruction_[4] = startOffset;
+  this.preStrokeRenderInstruction_[4] = startOffset;
+  this.postStrokeRenderInstruction_[4] = startOffset;
+  this.foregroundStrokeRenderInstruction_[4] = startOffset;
+
+  this.preFillRenderInstruction_[5] = endOffset;
+  this.postFillRenderInstruction_[5] = endOffset;
+  this.foregroundFillRenderInstruction_[5] = endOffset;
+  this.preStrokeRenderInstruction_[5] = endOffset;
+  this.postStrokeRenderInstruction_[5] = endOffset;
+  this.foregroundStrokeRenderInstruction_[5] = endOffset;
+
   // FIXME is it quicker to fill and stroke each polygon individually,
   // FIXME or all polygons together?
   var fillInstruction = [ol.render.canvas.Instruction.FILL];
   this.hitDetectionInstructions.push(fillInstruction);
+
   if (state.fillStyle !== undefined) {
+    if (this.preFillRenderFunction_) {
+      this.instructions.push(this.preFillRenderInstruction_);
+    }
+
+    //Create the geometry
+    //Start a new path
+    this.instructions.push([ol.render.canvas.Instruction.BEGIN_PATH]);
+
+    //Inject the geometry instructions
+    Array.prototype.push.apply(this.instructions, this.geometryInstructionArray_);
+
+    //Set fill properties as defined in the style
+    this.instructions.push(this.setFillStyleInstruction_);
+
+    //Add FILL instruction
     this.instructions.push(fillInstruction);
+
+    if (this.postFillRenderFunction_) {
+      this.instructions.push(this.postFillRenderInstruction_);
+    }
+
+    if (this.foregroundFillRenderFunction_) {
+      this.instructions.push(this.foregroundFillRenderInstruction_);
+    }
   }
+
   if (state.strokeStyle !== undefined) {
     goog.asserts.assert(state.lineWidth !== undefined,
         'state.lineWidth should be defined');
     var strokeInstruction = [ol.render.canvas.Instruction.STROKE];
+
+    if (this.preStrokeRenderFunction_) {
+      this.instructions.push(this.preStrokeRenderInstruction_);
+    }
+
+    if (this.postFillRenderFunction_ || this.preStrokeRenderFunction_) {
+      //Geometry may have been altered by the post/pre render functions.
+      //Need to recreate it
+
+      //Start a new path
+      this.instructions.push([ol.render.canvas.Instruction.BEGIN_PATH]);
+
+      //Inject the geometry instructions
+      Array.prototype.push.apply(this.instructions, this.geometryInstructionArray_);
+    }
+
+    //Set fill properties as defined in the style
+    this.instructions.push(this.setStrokeStyleInstruction_);
+
+    //Add STROKE instruction
     this.instructions.push(strokeInstruction);
     this.hitDetectionInstructions.push(strokeInstruction);
+
+    if (this.postStrokeRenderFunction_) {
+      this.instructions.push(this.postStrokeRenderInstruction_);
+    }
+
+    if (this.foregroundStrokeRenderFunction_) {
+      this.instructions.push(this.foregroundStrokeRenderInstruction_);
+    }
   }
+
   return offset;
 };
 
@@ -1348,6 +1813,13 @@ ol.render.canvas.PolygonReplay.prototype.drawPolygon = function(polygonGeometry,
   var stride = polygonGeometry.getStride();
   this.drawFlatCoordinatess_(flatCoordinates, 0, ends, stride);
   this.endGeometry(polygonGeometry, feature);
+
+  this.preFillRenderInstruction_[3] = feature;
+  this.postFillRenderInstruction_[3] = feature;
+  this.foregroundFillRenderInstruction_[3] = feature;
+  this.preStrokeRenderInstruction_[3] = feature;
+  this.postStrokeRenderInstruction_[3] = feature;
+  this.foregroundStrokeRenderInstruction_[3] = feature;
 };
 
 
@@ -1398,6 +1870,25 @@ ol.render.canvas.PolygonReplay.prototype.finish = function() {
   goog.asserts.assert(this.state_, 'this.state_ should not be null');
   this.reverseHitDetectionInstructions_();
   this.state_ = null;
+
+  this.preFillRenderFunction_ = null;
+  this.postFillRenderFunction_ = null;
+  this.foregroundFillRenderFunction_ = null;
+  this.preStrokeRenderFunction_ = null;
+  this.postStrokeRenderFunction_ = null;
+  this.foregroundStrokeRenderFunction_ = null;
+
+  this.preFillRenderInstruction_ = null;
+  this.postFillRenderInstruction_ = null;
+  this.foregroundFillRenderInstruction_ = null;
+  this.preStrokeRenderInstruction_ = null;
+  this.postStrokeRenderInstruction_ = null;
+  this.foregroundStrokeRenderInstruction_ = null;
+
+  this.setFillStyleInstruction_ = null;
+  this.setStrokeStyleInstruction_ = null;
+  this.geometryInstructionArray_ = null;
+
   // We want to preserve topology when drawing polygons.  Polygons are
   // simplified using quantization and point elimination. However, we might
   // have received a mix of quantized and non-quantized geometries, so ensure
@@ -1436,10 +1927,42 @@ ol.render.canvas.PolygonReplay.prototype.setFillStrokeStyle = function(fillStyle
   goog.asserts.assert(fillStyle || strokeStyle,
       'fillStyle or strokeStyle should not be null');
   var state = this.state_;
+
+  this.preFillRenderInstruction_ = [ol.render.canvas.Instruction.PRE_RENDER, null, null, null, 0, 0];
+  this.postFillRenderInstruction_ = [ol.render.canvas.Instruction.POST_RENDER, null, null, null, 0, 0];
+  this.foregroundFillRenderInstruction_ = [ol.render.canvas.Instruction.FOREGROUND_RENDER, null, null, null, 0, 0];
+
+  this.preStrokeRenderInstruction_ = [ol.render.canvas.Instruction.PRE_RENDER, null, null, null, 0, 0];
+  this.postStrokeRenderInstruction_ = [ol.render.canvas.Instruction.POST_RENDER, null, null, null, 0, 0];
+  this.foregroundStrokeRenderInstruction_ = [ol.render.canvas.Instruction.FOREGROUND_RENDER, null, null, null, 0, 0];
+
   if (fillStyle) {
     var fillStyleColor = fillStyle.getColor();
     state.fillStyle = ol.colorlike.asColorLike(fillStyleColor ?
         fillStyleColor : ol.render.canvas.defaultFillStyle);
+
+    var args = new ol.style.FillRenderArgs(
+      this.tolerance, this.maxExtent,
+      this.resolution, this.projection,
+      typeof state.fillStyle !== 'undefined' ? state.fillStyle : null,
+      true
+    );
+
+    var preFillRenderFunction = fillStyle.getPreRender();
+    this.preFillRenderFunction_ = preFillRenderFunction ? preFillRenderFunction : null;
+
+    var postFillRenderFunction = fillStyle.getPostRender();
+    this.postFillRenderFunction_ = postFillRenderFunction ? postFillRenderFunction : null;
+
+    var foregroundFillRenderFunction = fillStyle.getForegroundRender();
+    this.foregroundFillRenderFunction_ = foregroundFillRenderFunction ? foregroundFillRenderFunction : null;
+
+    this.preFillRenderInstruction_[1] = this.preFillRenderFunction_;
+    this.preFillRenderInstruction_[2] = args.clone();
+    this.postFillRenderInstruction_[1] = this.postFillRenderFunction_;
+    this.postFillRenderInstruction_[2] = args.clone();
+    this.foregroundFillRenderInstruction_[1] = this.foregroundFillRenderFunction_;
+    this.foregroundFillRenderInstruction_[2] = args.clone();
   } else {
     state.fillStyle = undefined;
   }
@@ -1468,6 +1991,33 @@ ol.render.canvas.PolygonReplay.prototype.setFillStrokeStyle = function(fillStyle
       // invalidate the buffered max extent cache
       this.bufferedMaxExtent_ = null;
     }
+
+    var args = new ol.style.StrokeRenderArgs(
+      this.tolerance, this.maxExtent,
+      this.resolution, this.projection,
+      ol.color.asString(strokeStyleColor ? strokeStyleColor : ol.render.canvas.defaultStrokeStyle),
+      strokeStyleLineCap !== undefined ? strokeStyleLineCap : ol.render.canvas.defaultLineCap,
+      strokeStyleLineDash ? strokeStyleLineDash.slice() : ol.render.canvas.defaultLineDash,
+      strokeStyleLineJoin !== undefined ? strokeStyleLineJoin : ol.render.canvas.defaultLineJoin,
+      strokeStyleMiterLimit !== undefined ? strokeStyleMiterLimit : ol.render.canvas.defaultMiterLimit,
+      strokeStyleWidth !== undefined ? strokeStyleWidth : ol.render.canvas.defaultLineWidth,
+      true
+    );
+
+    var preStrokeRenderFunction = strokeStyle.getPreRender();
+    this.preStrokeRenderFunction_ = preStrokeRenderFunction ? preStrokeRenderFunction : null;
+    this.preStrokeRenderInstruction_[1] = this.preStrokeRenderFunction_;
+    this.preStrokeRenderInstruction_[2] = args.clone();
+
+    var postStrokeRenderFunction = strokeStyle.getPostRender();
+    this.postStrokeRenderFunction_ = postStrokeRenderFunction ? postStrokeRenderFunction : null;
+    this.postStrokeRenderInstruction_[1] = this.postStrokeRenderFunction_;
+    this.postStrokeRenderInstruction_[2] = args.clone();
+
+    var foregroundStrokeRenderFunction = strokeStyle.getForegroundRender();
+    this.foregroundStrokeRenderFunction_ = foregroundStrokeRenderFunction ? foregroundStrokeRenderFunction : null;
+    this.foregroundStrokeRenderInstruction_[1] = this.foregroundStrokeRenderFunction_;
+    this.foregroundStrokeRenderInstruction_[2] = args.clone();
   } else {
     state.strokeStyle = undefined;
     state.lineCap = undefined;
@@ -1492,8 +2042,7 @@ ol.render.canvas.PolygonReplay.prototype.setFillStrokeStyles_ = function() {
   var lineWidth = state.lineWidth;
   var miterLimit = state.miterLimit;
   if (fillStyle !== undefined && state.currentFillStyle != fillStyle) {
-    this.instructions.push(
-        [ol.render.canvas.Instruction.SET_FILL_STYLE, fillStyle]);
+    this.setFillStyleInstruction_ = [ol.render.canvas.Instruction.SET_FILL_STYLE, fillStyle];
     state.currentFillStyle = state.fillStyle;
   }
   if (strokeStyle !== undefined) {
@@ -1509,9 +2058,9 @@ ol.render.canvas.PolygonReplay.prototype.setFillStrokeStyles_ = function() {
         state.currentLineJoin != lineJoin ||
         state.currentLineWidth != lineWidth ||
         state.currentMiterLimit != miterLimit) {
-      this.instructions.push(
-          [ol.render.canvas.Instruction.SET_STROKE_STYLE,
-           strokeStyle, lineWidth, lineCap, lineJoin, miterLimit, lineDash]);
+      this.setStrokeStyleInstruction_ = [ol.render.canvas.Instruction.SET_STROKE_STYLE,
+        strokeStyle, lineWidth, lineCap, lineJoin, miterLimit, lineDash];
+
       state.currentStrokeStyle = strokeStyle;
       state.currentLineCap = lineCap;
       state.currentLineDash = lineDash;
@@ -1529,12 +2078,13 @@ ol.render.canvas.PolygonReplay.prototype.setFillStrokeStyles_ = function() {
  * @param {number} tolerance Tolerance.
  * @param {ol.Extent} maxExtent Maximum extent.
  * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
  * @protected
  * @struct
  */
-ol.render.canvas.TextReplay = function(tolerance, maxExtent, resolution) {
+ol.render.canvas.TextReplay = function(tolerance, maxExtent, resolution, projection) {
 
-  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution);
+  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution, projection);
 
   /**
    * @private
@@ -1602,6 +2152,25 @@ ol.render.canvas.TextReplay = function(tolerance, maxExtent, resolution) {
    */
   this.textState_ = null;
 
+  /**
+   * @private
+   * @type {ol.style.TextRenderFunction|null}
+   */
+  this.preRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.TextRenderFunction|null}
+   */
+  this.postRenderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.TextRenderFunction|null}
+   */
+  this.foregroundRenderFunction_ = null;
+
+  this.renderFunctionArgs_ = null;
 };
 ol.inherits(ol.render.canvas.TextReplay, ol.render.canvas.Replay);
 
@@ -1614,17 +2183,25 @@ ol.render.canvas.TextReplay.prototype.drawText = function(flatCoordinates, offse
       (!this.textFillState_ && !this.textStrokeState_)) {
     return;
   }
+  this.beginGeometry(geometry, feature);
+  this.setReplayTextState_(this.textState_);
+
+  var myBegin = this.coordinates.length;
+  var myEnd =
+    this.appendFlatCoordinates(flatCoordinates, offset, end, stride, false);
+
+  if (this.preRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.PRE_RENDER, this.preRenderFunction_,
+      this.renderFunctionArgs_, feature, myBegin, myEnd]);
+  }
+
   if (this.textFillState_) {
     this.setReplayFillState_(this.textFillState_);
   }
   if (this.textStrokeState_) {
     this.setReplayStrokeState_(this.textStrokeState_);
   }
-  this.setReplayTextState_(this.textState_);
-  this.beginGeometry(geometry, feature);
-  var myBegin = this.coordinates.length;
-  var myEnd =
-      this.appendFlatCoordinates(flatCoordinates, offset, end, stride, false);
+
   var fill = !!this.textFillState_;
   var stroke = !!this.textStrokeState_;
   var drawTextInstruction = [
@@ -1633,6 +2210,17 @@ ol.render.canvas.TextReplay.prototype.drawText = function(flatCoordinates, offse
     fill, stroke];
   this.instructions.push(drawTextInstruction);
   this.hitDetectionInstructions.push(drawTextInstruction);
+
+  if (this.postRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.POST_RENDER, this.postRenderFunction_,
+      this.renderFunctionArgs_, feature, myBegin, myEnd]);
+  }
+
+  if (this.foregroundRenderFunction_) {
+    this.instructions.push([ol.render.canvas.Instruction.FOREGROUND_RENDER, this.foregroundRenderFunction_,
+      this.renderFunctionArgs_, feature, myBegin, myEnd]);
+  }
+
   this.endGeometry(geometry, feature);
 };
 
@@ -1741,11 +2329,12 @@ ol.render.canvas.TextReplay.prototype.setTextStyle = function(textStyle) {
     this.text_ = '';
   } else {
     var textFillStyle = textStyle.getFill();
+    var fillStyle;
     if (!textFillStyle) {
       this.textFillState_ = null;
     } else {
       var textFillStyleColor = textFillStyle.getColor();
-      var fillStyle = ol.colorlike.asColorLike(textFillStyleColor ?
+      fillStyle = ol.colorlike.asColorLike(textFillStyleColor ?
           textFillStyleColor : ol.render.canvas.defaultFillStyle);
       if (!this.textFillState_) {
         this.textFillState_ = {
@@ -1828,7 +2417,206 @@ ol.render.canvas.TextReplay.prototype.setTextStyle = function(textStyle) {
     this.textOffsetY_ = textOffsetY !== undefined ? textOffsetY : 0;
     this.textRotation_ = textRotation !== undefined ? textRotation : 0;
     this.textScale_ = textScale !== undefined ? textScale : 1;
+
+    var preRender = textStyle.getPreRender();
+    var postRender = textStyle.getPostRender();
+    var foregroundRender = textStyle.getForegroundRender();
+    this.preRenderFunction_ = preRender ? preRender : null;
+    this.postRenderFunction_ = postRender ? postRender : null;
+    this.foregroundRenderFunction_ = foregroundRender ? foregroundRender : null;
+
+    var fillArgs = null;
+    if (textFillStyle) {
+      fillArgs = new ol.style.FillRenderArgs(
+        this.tolerance, this.maxExtent,
+        this.resolution, this.projection,
+        fillStyle ? fillStyle : null,
+        false
+      );
+    }
+
+    var strokeArgs = null;
+    if (this.textStrokeState_) {
+      strokeArgs = new ol.style.StrokeRenderArgs(
+        this.tolerance, this.maxExtent,
+        this.resolution, this.projection,
+        this.textStrokeState_.strokeStyle,
+        this.textStrokeState_.lineCap,
+        this.textStrokeState_.lineDash,
+        this.textStrokeState_.lineJoin,
+        this.textStrokeState_.miterLimit,
+        this.textStrokeState_.lineWidth,
+        false
+      );
+    }
+
+    var textArgs = new ol.style.TextRenderArgs(
+      this.tolerance, this.maxExtent,
+      this.resolution, this.projection,
+      font,
+      this.textOffsetX_,
+      this.textOffsetY_,
+      this.textScale_,
+      this.textRotation_,
+      this.text_,
+      textAlign,
+      textBaseline,
+      fillArgs,
+      strokeArgs
+    );
+
+    this.renderFunctionArgs_ = textArgs;
   }
+};
+
+
+ol.render.canvas.TextReplay.prototype.finish = function () {
+  this.preRenderFunction_ = null;
+  this.postRenderFunction_ = null;
+  this.foregroundRenderFunction_ = null;
+  this.renderFunctionArgs_ = null;
+};
+
+
+/**
+ * @constructor
+ * @extends {ol.render.canvas.Replay}
+ * @param {number} tolerance Tolerance.
+ * @param {ol.Extent} maxExtent Maximum extent.
+ * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
+ * @protected
+ * @struct
+ */
+ol.render.canvas.CustomRenderingReplay = function (tolerance, maxExtent, resolution, projection) {
+
+  ol.render.canvas.Replay.call(this, tolerance, maxExtent, resolution, projection);
+
+  /**
+   * @private
+   * @type {ol.style.CustomRenderFunction|null}
+   */
+  this.renderFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.CustomRenderFunction|null}
+   */
+  this.hitDetectionFunction_ = null;
+
+  /**
+   * @private
+   * @type {ol.style.CustomRenderExtentFunction|undefined}
+   */
+  this.extentFunction_ = undefined;
+
+  /**
+   * @private
+   * @type {ol.style.CustomRenderFunction|undefined}
+   */
+  this.preRenderFunction_ = undefined;
+
+  /**
+   * @private
+   * @type {ol.style.CustomRenderFunction|undefined}
+   */
+  this.postRenderFunction_ = undefined;
+
+  /**
+   * @private
+   * @type {ol.style.CustomRenderFunction|undefined}
+   */
+  this.foregroundRenderFunction_ = undefined;
+};
+goog.inherits(ol.render.canvas.CustomRenderingReplay, ol.render.canvas.Replay);
+
+
+/**
+ * @param {Array.<number>} flatCoordinates Flat coordinates.
+ * @param {number} offset Offset.
+ * @param {number} end End.
+ * @param {number} stride Stride.
+ * @private
+ * @return {number} My end.
+ */
+ol.render.canvas.CustomRenderingReplay.prototype.drawCoordinates_ =
+  function (flatCoordinates, offset, end, stride) {
+    return this.appendFlatCoordinates(
+      flatCoordinates, offset, end, stride, false);
+  };
+
+
+/**
+ * @inheritDoc
+ */
+ol.render.canvas.CustomRenderingReplay.prototype.drawPoint =
+  function (pointGeometry, feature) {
+    this.beginGeometry(pointGeometry, feature);
+    var flatCoordinates = pointGeometry.getFlatCoordinates();
+    var stride = pointGeometry.getStride();
+    var myBegin = this.coordinates.length;
+    var myEnd = this.drawCoordinates_(flatCoordinates, 0, flatCoordinates.length, stride);
+    var args = new ol.style.ReplayArgs(this.tolerance, this.maxExtent, this.resolution, this.projection);
+
+    if (this.preRenderFunction_) {
+      this.instructions.push([ol.render.canvas.Instruction.PRE_RENDER, this.preRenderFunction_,
+        args, feature, myBegin, myEnd]);
+    }
+
+    if (this.renderFunction_) {
+      this.instructions.push([ol.render.canvas.Instruction.CUSTOM_RENDER,
+        this.renderFunction_, this.extentFunction_,
+        args, feature, myBegin, myEnd]);
+    }
+
+    if (this.hitDetectionFunction_) {
+      this.hitDetectionInstructions.push([ol.render.canvas.Instruction.CUSTOM_RENDER,
+        this.hitDetectionFunction_, this.extentFunction_, args, feature, myBegin, myEnd]);
+    }
+
+    if (this.postRenderFunction_) {
+      this.instructions.push([ol.render.canvas.Instruction.POST_RENDER, this.postRenderFunction_,
+        args, feature, myBegin, myEnd]);
+    }
+
+    if (this.foregroundRenderFunction_) {
+      this.instructions.push([ol.render.canvas.Instruction.FOREGROUND_RENDER, this.foregroundRenderFunction_,
+        args, feature, myBegin, myEnd]);
+    }
+
+    this.endGeometry(pointGeometry, feature);
+  };
+
+
+/**
+ * @inheritDoc
+ */
+ol.render.canvas.CustomRenderingReplay.prototype.setCustomRenderingStyle = function (customRenderingStyle) {
+  if (!customRenderingStyle || !customRenderingStyle.getRender()) {
+    this.renderFunction_ = null;
+    this.hitDetectionFunction_ = null;
+    this.extentFunction_ = undefined;
+    this.preRenderFunction_ = undefined;
+    this.postRenderFunction_ = undefined;
+    this.foregroundRenderFunction_ = undefined;
+    return;
+  }
+
+  this.renderFunction_ = customRenderingStyle.getRender();
+  this.hitDetectionFunction_ = customRenderingStyle.getHitDetection();
+  this.extentFunction_ = customRenderingStyle.getExtentFunction();
+  this.preRenderFunction_ = customRenderingStyle.getPreRender();
+  this.postRenderFunction_ = customRenderingStyle.getPostRender();
+  this.foregroundRenderFunction_ = customRenderingStyle.getForegroundRender();
+};
+
+ol.render.canvas.CustomRenderingReplay.prototype.finish = function () {
+  this.renderFunction_ = null;
+  this.hitDetectionFunction_ = null;
+  this.extentFunction_ = undefined;
+  this.preRenderFunction_ = undefined;
+  this.postRenderFunction_ = undefined;
+  this.foregroundRenderFunction_ = undefined;
 };
 
 
@@ -1838,11 +2626,12 @@ ol.render.canvas.TextReplay.prototype.setTextStyle = function(textStyle) {
  * @param {number} tolerance Tolerance.
  * @param {ol.Extent} maxExtent Max extent.
  * @param {number} resolution Resolution.
+ * @param {ol.proj.Projection} projection Projection.
  * @param {number=} opt_renderBuffer Optional rendering buffer.
  * @struct
  */
 ol.render.canvas.ReplayGroup = function(
-    tolerance, maxExtent, resolution, opt_renderBuffer) {
+    tolerance, maxExtent, resolution, projection, opt_renderBuffer) {
 
   /**
    * @private
@@ -1861,6 +2650,12 @@ ol.render.canvas.ReplayGroup = function(
    * @type {number}
    */
   this.resolution_ = resolution;
+
+  /**
+   * @private
+   * @type {ol.proj.Projection}
+   */
+  this.projection_ = projection;
 
   /**
    * @private
@@ -1973,7 +2768,7 @@ ol.render.canvas.ReplayGroup.prototype.getReplay = function(zIndex, replayType) 
         replayType +
         ' constructor missing from ol.render.canvas.BATCH_CONSTRUCTORS_');
     replay = new Constructor(this.tolerance_, this.maxExtent_,
-        this.resolution_);
+        this.resolution_, this.projection_);
     replays[replayType] = replay;
   }
   return replay;
@@ -1997,9 +2792,10 @@ ol.render.canvas.ReplayGroup.prototype.isEmpty = function() {
  *     to skip.
  * @param {Array.<ol.render.ReplayType>=} opt_replayTypes Ordered replay types
  *     to replay. Default is {@link ol.render.REPLAY_ORDER}
+ * @param {olx.FrameState=} opt_frameState FrameState.
  */
 ol.render.canvas.ReplayGroup.prototype.replay = function(context, pixelRatio,
-    transform, viewRotation, skippedFeaturesHash, opt_replayTypes) {
+    transform, viewRotation, skippedFeaturesHash, opt_replayTypes, opt_frameState) {
 
   /** @type {Array.<number>} */
   var zs = Object.keys(this.replaysByZIndex_).map(Number);
@@ -2032,7 +2828,7 @@ ol.render.canvas.ReplayGroup.prototype.replay = function(context, pixelRatio,
       replay = replays[replayTypes[j]];
       if (replay !== undefined) {
         replay.replay(context, pixelRatio, transform, viewRotation,
-            skippedFeaturesHash);
+            skippedFeaturesHash, opt_frameState);
       }
     }
   }
@@ -2087,11 +2883,12 @@ ol.render.canvas.ReplayGroup.prototype.replayHitDetection_ = function(
  * @private
  * @type {Object.<ol.render.ReplayType,
  *                function(new: ol.render.canvas.Replay, number, ol.Extent,
- *                number)>}
+ *                number, ol.proj.Projection)>}
  */
 ol.render.canvas.BATCH_CONSTRUCTORS_ = {
   'Image': ol.render.canvas.ImageReplay,
   'LineString': ol.render.canvas.LineStringReplay,
   'Polygon': ol.render.canvas.PolygonReplay,
-  'Text': ol.render.canvas.TextReplay
+  'Text': ol.render.canvas.TextReplay,
+  'CustomRendering': ol.render.canvas.CustomRenderingReplay
 };

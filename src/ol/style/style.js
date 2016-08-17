@@ -8,7 +8,7 @@ goog.require('ol.style.Circle');
 goog.require('ol.style.Fill');
 goog.require('ol.style.Image');
 goog.require('ol.style.Stroke');
-
+goog.require('ol.style.CustomRendering');
 
 /**
  * @classdesc
@@ -64,6 +64,12 @@ ol.style.Style = function(opt_options) {
    * @type {ol.style.Text}
    */
   this.text_ = options.text !== undefined ? options.text : null;
+
+  /**
+   * @private
+   * @type {ol.style.CustomRendering}
+   */
+  this.customRendering_ = options.customRendering !== undefined ? options.customRendering : null;
 
   /**
    * @private
@@ -134,6 +140,16 @@ ol.style.Style.prototype.getStroke = function() {
  */
 ol.style.Style.prototype.getText = function() {
   return this.text_;
+};
+
+
+/**
+ * Get the custom rendering style.
+ * @return {ol.style.CustomRendering} Custom rendering style.
+ * @api
+ */
+ol.style.Style.prototype.getCustomRendering = function() {
+  return this.customRendering_;
 };
 
 
@@ -346,4 +362,99 @@ ol.style.createDefaultEditingStyles = function() {
 ol.style.defaultGeometryFunction = function(feature) {
   goog.asserts.assert(feature, 'feature must not be null');
   return feature.getGeometry();
+};
+
+/**
+ * Computes the extent (minx, miny, maxx, maxy) from a flat coordinates array.
+ * @param {Array<number>} coordinates A flat coordinates array (1-dimension array with all values). Array stride must be 2.
+ * @return {Array<number>} The extent (minx, miny, maxx, maxy) of the coordinates array.
+ * @api
+ */
+ol.style.getExtentFromFlatCoordinates = function(coordinates) {
+  if (!coordinates) {
+    return null;
+  }
+
+  var minx = Number.POSITIVE_INFINITY;
+  var miny = Number.POSITIVE_INFINITY;
+  var maxx = Number.NEGATIVE_INFINITY;
+  var maxy = Number.NEGATIVE_INFINITY;
+
+  var x, y;
+
+  for (var i = 0; i < coordinates.length; i += 2) {
+    x = coordinates[i];
+    y = coordinates[i + 1];
+
+    if (x < minx) {
+      minx = x;
+    }
+
+    if (x > maxx) {
+      maxx = x;
+    }
+
+    if (y < miny) {
+      miny = y;
+    }
+
+    if (y > maxy) {
+      maxy = y;
+    }
+  }
+
+  return [minx, miny, maxx, maxy];
+};
+
+/**
+ * Computes the flat coordinates array of an extent.
+ * @param {Array<number>} extent The extent to convert (minx, miny, maxx, maxy).
+ * @return {Array<number>} The flat coordinates array (1-dimension array with all values) representing the extent.
+ * Array stride is 2.
+ * @api
+ */
+ol.style.extentToFlatCoordinates = function(extent) {
+  var minx = extent[0];
+  var miny = extent[1];
+  var maxx = extent[2];
+  var maxy = extent[3];
+
+  return [minx, miny, maxx, miny, maxx, maxy, minx, maxy]
+};
+
+/**
+ * Computes the mid-points of every segment from a list.
+ * @param {Array<number>} coordinates A flat coordinates array (1-dimension array) representing one or more segments.
+ * @param {boolean} isPolygon If true, a mid-point is computed between the last and the first point of the array.
+ * @api
+ */
+ol.style.computeMidpoints = function(coordinates, isPolygon) {
+
+  var x1, x2, y1, y2;
+
+  var result = [];
+
+  //Skip the last point of the array, as it's processed by point n-1.
+  for (var i = 0; i < coordinates.length - 2; i += 2) {
+    x1 = coordinates[i];
+    y1 = coordinates[i + 1];
+    x2 = coordinates[i + 2];
+    y2 = coordinates[i + 3];
+
+    result.push(Math.floor(x1 +(x2 - x1) / 2));
+    result.push(Math.floor(y1 + (y2 - y1) / 2));
+  }
+
+  if (isPolygon) {
+    //Compute mid-point between last and first point
+    x1 = coordinates[coordinates.length - 2];
+    y1 = coordinates[coordinates.length - 1];
+    x2 = coordinates[0];
+    y2 = coordinates[1];
+
+    result.push(Math.floor(x1 + (x2 - x1) / 2));
+    result.push(Math.floor(y1 + (y2 - y1) / 2));
+  }
+
+  return result;
 };

@@ -249,6 +249,14 @@ ol.renderer.vector.renderPointGeometry_ = function(replayGroup, geometry, style,
     textReplay.drawText(geometry.getFlatCoordinates(), 0, 2, 2, geometry,
         feature);
   }
+
+  var customRenderingStyle = style.getCustomRendering();
+  if (customRenderingStyle) {
+    var customRenderReplay = replayGroup.getReplay(
+      style.getZIndex(), ol.render.ReplayType.CUSTOM_RENDERING);
+    customRenderReplay.setCustomRenderingStyle(customRenderingStyle);
+    customRenderReplay.drawPoint(geometry, feature);
+  }
 };
 
 

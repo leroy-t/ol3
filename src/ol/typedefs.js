@@ -693,3 +693,70 @@ ol.XmlSerializer;
  *            value: (Object|undefined)}}
  */
 ol.RBushEntry;
+
+
+/**
+ * A function that takes a CanvasRenderingContext2D, an array of coordinates (in screen pixels),
+ * an {@link ol.style.ImageRenderArgs}, an {@link ol.Feature}, the pixel ratio as arguments and returns nothing.
+ *
+ * @typedef {function(CanvasRenderingContext2D, Array<number>, ol.style.ImageRenderArgs, ol.Feature, number): undefined}
+ */
+ol.style.ImageRenderFunction;
+
+
+/**
+ * A function that takes a CanvasRenderingContext2D, an array of coordinates (in screen pixels), a
+ * {@link ol.style.FillRenderArgs}, an {@link ol.Feature}, the pixel ratio as arguments and returns nothing.
+ *
+ * @typedef {function(CanvasRenderingContext2D, Array<number>, ol.style.FillRenderArgs, ol.Feature, number): undefined}
+ */
+ol.style.FillRenderFunction;
+
+
+/**
+ * A function that takes a CanvasRenderingContext2D, an array of coordinates (in screen pixels), an
+ * {@link ol.style.StrokeRenderArgs}, an {@link ol.Feature}, the pixel ratio as arguments and returns nothing.
+ *
+ * @typedef {function(CanvasRenderingContext2D, Array<number>, ol.style.StrokeRenderArgs, ol.Feature, number): undefined}
+ */
+ol.style.StrokeRenderFunction;
+
+
+/**
+ * A function that takes a CanvasRenderingContext2D, an array of coordinates (in screen pixels), a
+ * {@link ol.style.TextRenderArgs}, an {@link ol.Feature}, the pixel ratio as arguments and returns nothing.
+ *
+ * @typedef {function(CanvasRenderingContext2D, Array<number>, ol.style.TextRenderArgs, ol.Feature, number): undefined}
+ */
+ol.style.TextRenderFunction;
+
+
+/**
+ * A function that takes a CanvasRenderingContext2D, an array of coordinates (in screen pixels), a {@link ol.style.ReplayArgs},
+ * an {@link ol.Feature}, the pixel ratio as arguments and returns nothing.
+ *
+ * @typedef {function(CanvasRenderingContext2D, Array<number>, ol.style.ReplayArgs,
+ * ol.style.ReplayArgs, ol.Feature, number): undefined}
+ */
+ol.style.CustomRenderFunction;
+
+
+/**
+ * A function that takes a CanvasRenderingContext2D, an array of coordinates (in screen pixels), a {@link ol.style.ReplayArgs},
+ * an {@link ol.Feature}, the pixel ratio as arguments and returns an {@link ol.Extent}.
+ *
+ * @typedef {function(CanvasRenderingContext2D, Array<number>, ol.style.ReplayArgs,
+ * ol.style.ReplayArgs, ol.Feature, number): ol.Extent}
+ */
+ol.style.CustomRenderExtentFunction;
+
+
+/**
+ * @typedef {{x: (null|number),
+ *     y: (null|number),
+ *     onLine1: (boolean),
+ *     onLine2: (boolean),
+ *     intersects: (boolean)}}
+ * @api
+ */
+ol.vec.IntersectionResult;

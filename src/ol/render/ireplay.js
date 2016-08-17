@@ -10,7 +10,8 @@ ol.render.ReplayType = {
   IMAGE: 'Image',
   LINE_STRING: 'LineString',
   POLYGON: 'Polygon',
-  TEXT: 'Text'
+  TEXT: 'Text',
+  CUSTOM_RENDERING: 'CustomRendering'
 };
 
 
@@ -19,6 +20,7 @@ ol.render.ReplayType = {
  * @type {Array.<ol.render.ReplayType>}
  */
 ol.render.REPLAY_ORDER = [
+  ol.render.ReplayType.CUSTOM_RENDERING,
   ol.render.ReplayType.POLYGON,
   ol.render.ReplayType.LINE_STRING,
   ol.render.ReplayType.IMAGE,

@@ -184,13 +184,30 @@ ol.style.Icon = function(opt_options) {
    */
   var snapToPixel = options.snapToPixel !== undefined ?
       options.snapToPixel : true;
+  /**
+   * @type {ol.style.ImageRenderFunction|undefined}
+   */
+  var preRender = options.preRender;
+
+  /**
+   * @type {ol.style.ImageRenderFunction|undefined}
+   */
+  var postRender = options.postRender;
+
+  /**
+   * @type {ol.style.ImageRenderFunction|undefined}
+   */
+  var foregroundRender = options.foregroundRender;
 
   ol.style.Image.call(this, {
     opacity: opacity,
     rotation: rotation,
     scale: scale,
     snapToPixel: snapToPixel,
-    rotateWithView: rotateWithView
+    rotateWithView: rotateWithView,
+    preRender: preRender,
+    postRender: postRender,
+    foregroundRender: foregroundRender
   });
 
 };

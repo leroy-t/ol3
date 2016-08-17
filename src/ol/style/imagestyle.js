@@ -55,6 +55,24 @@ ol.style.Image = function(options) {
    */
   this.snapToPixel_ = options.snapToPixel;
 
+  /**
+   * @private
+   * @type {ol.style.ImageRenderFunction|undefined}
+   */
+  this.preRender_ = options.preRender;
+
+  /**
+   * @private
+   * @type {ol.style.ImageRenderFunction|undefined}
+   */
+  this.postRender_ = options.postRender;
+
+  /**
+   * @private
+   * @type {ol.style.ImageRenderFunction|undefined}
+   */
+  this.foregroundRender_ = options.foregroundRender;
+
 };
 
 
@@ -168,6 +186,36 @@ ol.style.Image.prototype.getSize = goog.abstractMethod;
 
 
 /**
+ * Get the pre-render function, executed before OL3 normal rendering pass.
+ * @return {ol.style.ImageRenderFunction|undefined} Render function.
+ * @api
+ */
+ol.style.Image.prototype.getPreRender = function() {
+  return this.preRender_;
+};
+
+
+/**
+ * Get the post-render function, executed after OL3 normal rendering pass.
+ * @return {ol.style.ImageRenderFunction|undefined} Render function.
+ * @api
+ */
+ol.style.Image.prototype.getPostRender = function() {
+  return this.postRender_;
+};
+
+
+/**
+ * Get the render function, executed after map normal rendering pass.
+ * @return {ol.style.ImageRenderFunction|undefined} Render function.
+ * @api
+ */
+ol.style.Image.prototype.getForegroundRender = function() {
+  return this.foregroundRender_;
+};
+
+
+/**
  * Set the opacity.
  *
  * @param {number} opacity Opacity.
@@ -217,6 +265,39 @@ ol.style.Image.prototype.setScale = function(scale) {
  */
 ol.style.Image.prototype.setSnapToPixel = function(snapToPixel) {
   this.snapToPixel_ = snapToPixel;
+};
+
+
+/**
+ * Set the pre-render function.
+ *
+ * @param {ol.style.ImageRenderFunction|undefined} renderFunction Render function.
+ * @api
+ */
+ol.style.Image.prototype.setPreRender = function(renderFunction) {
+  this.preRender_ = renderFunction;
+};
+
+
+/**
+ * Set the post-render function.
+ *
+ * @param {ol.style.ImageRenderFunction|undefined} renderFunction Render function.
+ * @api
+ */
+ol.style.Image.prototype.setPostRender = function(renderFunction) {
+  this.postRender_ = renderFunction;
+};
+
+
+/**
+ * Set the foreground render function, executed after map normal rendering pass.
+ *
+ * @param {ol.style.ImageRenderFunction|undefined} renderFunction Render function.
+ * @api
+ */
+ol.style.Image.prototype.setForegroundRender = function(renderFunction) {
+  this.foregroundRender_ = renderFunction;
 };
 
 

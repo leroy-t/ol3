@@ -6530,7 +6530,11 @@ olx.style.CircleOptions.prototype.atlasManager;
 
 
 /**
- * @typedef {{color: (ol.Color|ol.ColorLike|undefined)}}
+ * @typedef {{color: (ol.Color|ol.ColorLike|undefined),
+ * image: (Array|undefined),
+ * preRender: (ol.style.FillRenderFunction|undefined),
+ * postRender: (ol.style.FillRenderFunction|undefined),
+ * foregroundRender: (ol.style.FillRenderFunction|undefined)}}
  */
 olx.style.FillOptions;
 
@@ -6543,6 +6547,30 @@ olx.style.FillOptions;
  * @api
  */
 olx.style.FillOptions.prototype.color;
+
+
+/**
+ * A rendering function called before the "main" rendering process.
+ * @type {ol.style.FillRenderFunction|undefined}
+ * @api
+ */
+olx.style.FillOptions.prototype.preRender;
+
+
+/**
+ * A rendering function called after the "main" rendering process.
+ * @type {ol.style.FillRenderFunction|undefined}
+ * @api
+ */
+olx.style.FillOptions.prototype.postRender;
+
+
+/**
+ * A rendering function called after the whole map rendering process.
+ * @type {ol.style.FillRenderFunction|undefined}
+ * @api
+ */
+olx.style.FillOptions.prototype.foregroundRender;
 
 
 /**
@@ -6562,7 +6590,10 @@ olx.style.FillOptions.prototype.color;
  *     rotation: (number|undefined),
  *     size: (ol.Size|undefined),
  *     imgSize: (ol.Size|undefined),
- *     src: (string|undefined)}}
+ *     src: (string|undefined),
+ *     preRender: (ol.style.ImageRenderFunction|undefined),
+ *     postRender: (ol.style.ImageRenderFunction|undefined),
+ *     foregroundRender: (ol.style.ImageRenderFunction|undefined)}}
  */
 olx.style.IconOptions;
 
@@ -6727,6 +6758,30 @@ olx.style.IconOptions.prototype.src;
 
 
 /**
+ * A rendering function called before the "main" rendering process.
+ * @type {ol.style.ImageRenderFunction|undefined}
+ * @api
+ */
+olx.style.IconOptions.prototype.preRender;
+
+
+/**
+ * A rendering function called after the "main" rendering process.
+ * @type {ol.style.ImageRenderFunction|undefined}
+ * @api
+ */
+olx.style.IconOptions.prototype.postRender;
+
+
+/**
+ * A rendering function called after the whole map rendering process.
+ * @type {ol.style.ImageRenderFunction|undefined}
+ * @api
+ */
+olx.style.IconOptions.prototype.foregroundRender;
+
+
+/**
  * Specify radius for regular polygons, or radius1 and radius2 for stars.
  * @typedef {{fill: (ol.style.Fill|undefined),
  *     points: number,
@@ -6738,7 +6793,10 @@ olx.style.IconOptions.prototype.src;
  *     stroke: (ol.style.Stroke|undefined),
  *     rotation: (number|undefined),
  *     rotateWithView: (boolean|undefined),
- *     atlasManager: (ol.style.AtlasManager|undefined)}}
+ *     atlasManager: (ol.style.AtlasManager|undefined),
+ *     preRender: (ol.style.ImageRenderFunction|undefined),
+ *     postRender: (ol.style.ImageRenderFunction|undefined),
+ *     foregroundRender: (ol.style.ImageRenderFunction|undefined)}}
  */
 olx.style.RegularShapeOptions;
 
@@ -6843,12 +6901,39 @@ olx.style.RegularShapeOptions.prototype.atlasManager;
 
 
 /**
+ * A rendering function called before the "main" rendering process.
+ * @type {ol.style.ImageRenderFunction|undefined}
+ * @api
+ */
+olx.style.RegularShapeOptions.prototype.preRender;
+
+
+/**
+ * A rendering function called after the "main" rendering process.
+ * @type {ol.style.ImageRenderFunction|undefined}
+ * @api
+ */
+olx.style.RegularShapeOptions.prototype.postRender;
+
+
+/**
+ * A rendering function called after the whole map rendering process.
+ * @type {ol.style.ImageRenderFunction|undefined}
+ * @api
+ */
+olx.style.RegularShapeOptions.prototype.foregroundRender;
+
+
+/**
  * @typedef {{color: (ol.Color|string|undefined),
  *     lineCap: (string|undefined),
  *     lineJoin: (string|undefined),
  *     lineDash: (Array.<number>|undefined),
  *     miterLimit: (number|undefined),
- *     width: (number|undefined)}}
+ *     width: (number|undefined),
+ *     preRender: (ol.style.StrokeRenderFunction|undefined),
+ *     postRender: (ol.style.StrokeRenderFunction|undefined),
+ *     foregroundRender: (ol.style.StrokeRenderFunction|undefined)}}
  */
 olx.style.StrokeOptions;
 
@@ -6909,6 +6994,30 @@ olx.style.StrokeOptions.prototype.width;
 
 
 /**
+ * A rendering function called before the "main" rendering process.
+ * @type {ol.style.StrokeRenderFunction|undefined}
+ * @api
+ */
+olx.style.StrokeOptions.prototype.preRender;
+
+
+/**
+ * A rendering function called after the "main" rendering process.
+ * @type {ol.style.StrokeRenderFunction|undefined}
+ * @api
+ */
+olx.style.StrokeOptions.prototype.postRender;
+
+
+/**
+ * A rendering function called after the whole map rendering process.
+ * @type {ol.style.StrokeRenderFunction|undefined}
+ * @api
+ */
+olx.style.StrokeOptions.prototype.foregroundRender;
+
+
+/**
  * @typedef {{font: (string|undefined),
  *     offsetX: (number|undefined),
  *     offsetY: (number|undefined),
@@ -6918,7 +7027,10 @@ olx.style.StrokeOptions.prototype.width;
  *     textAlign: (string|undefined),
  *     textBaseline: (string|undefined),
  *     fill: (ol.style.Fill|undefined),
- *     stroke: (ol.style.Stroke|undefined)}}
+ *     stroke: (ol.style.Stroke|undefined),
+ *     preRender: (ol.style.TextRenderFunction|undefined),
+ *     postRender: (ol.style.TextRenderFunction|undefined),
+ *     foregroundRender: (ol.style.TextRenderFunction|undefined)}}
  */
 olx.style.TextOptions;
 
@@ -7010,11 +7122,98 @@ olx.style.TextOptions.prototype.stroke;
 
 
 /**
+ * A rendering function called before the "main" rendering process.
+ * @type {ol.style.TextRenderFunction|undefined}
+ * @api
+ */
+olx.style.TextOptions.prototype.preRender;
+
+
+/**
+ * A rendering function called after the "main" rendering process.
+ * @type {ol.style.TextRenderFunction|undefined}
+ * @api
+ */
+olx.style.TextOptions.prototype.postRender;
+
+
+/**
+ * A rendering function called after the whole map rendering process.
+ * @type {ol.style.TextRenderFunction|undefined}
+ * @api
+ */
+olx.style.TextOptions.prototype.foregroundRender;
+
+
+/**
+ * @typedef {{render: (ol.style.CustomRenderFunction),
+ *     hitDetection: (ol.style.CustomRenderFunction|undefined),
+ *     extentFunction: (ol.style.CustomRenderExtentFunction|undefined),
+ *     preRender: (ol.style.CustomRenderFunction|undefined),
+ *     postRender: (ol.style.CustomRenderFunction|undefined),
+ *     foregroundRender: (ol.style.CustomRenderFunction|undefined)}}
+ * @api
+ */
+olx.style.CustomRenderingOptions;
+
+
+/**
+ * A rendering function used to render the feature instead of OL3 standard rendering process.
+ * @type {ol.style.CustomRenderFunction|undefined}
+ * @api
+ */
+olx.style.CustomRenderingOptions.prototype.render;
+
+
+/**
+ * A rendering function used to draw the hit detection shape of the feature. If null, feature is not clickable.
+ * If undefined, 'render' function is used for the hit detection.
+ * @type {ol.style.CustomRenderFunction|undefined}
+ * @api
+ */
+olx.style.CustomRenderingOptions.prototype.hitDetection;
+
+
+/**
+ * A function used to return the extent of the hit detection shape of the feature. If null or undefined, feature
+ * is not clickable.
+ * @type {ol.style.CustomRenderExtentFunction|undefined}
+ * @api
+ */
+olx.style.CustomRenderingOptions.prototype.extentFunction;
+
+
+/**
+ * A rendering function called before the "main" rendering process.
+ * @type {ol.style.CustomRenderFunction|undefined}
+ * @api
+ */
+olx.style.CustomRenderingOptions.prototype.preRender;
+
+
+/**
+ * A rendering function called after the "main" rendering process.
+ * @type {ol.style.CustomRenderFunction|undefined}
+ * @api
+ */
+olx.style.CustomRenderingOptions.prototype.postRender;
+
+
+/**
+ * A rendering function called after the whole map rendering process.
+ * @type {ol.style.CustomRenderFunction|undefined}
+ * @api
+ */
+olx.style.CustomRenderingOptions.prototype.foregroundRender;
+
+
+/**
  * @typedef {{geometry: (undefined|string|ol.geom.Geometry|ol.StyleGeometryFunction),
  *     fill: (ol.style.Fill|undefined),
  *     image: (ol.style.Image|undefined),
  *     stroke: (ol.style.Stroke|undefined),
  *     text: (ol.style.Text|undefined),
+ *     customRendering: (ol.style.CustomRendering|undefined),
  *     zIndex: (number|undefined)}}
  */
 olx.style.StyleOptions;
@@ -7059,6 +7258,14 @@ olx.style.StyleOptions.prototype.stroke;
  * @api
  */
 olx.style.StyleOptions.prototype.text;
+
+
+/**
+ * Custom rendering style.
+ * @type {ol.style.CustomRendering|undefined}
+ * @api
+ */
+olx.style.StyleOptions.prototype.customRendering;
 
 
 /**

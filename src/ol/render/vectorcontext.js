@@ -124,3 +124,9 @@ ol.render.VectorContext.prototype.setImageStyle = goog.abstractMethod;
  * @param {ol.style.Text} textStyle Text style.
  */
 ol.render.VectorContext.prototype.setTextStyle = goog.abstractMethod;
+
+
+/**
+ * @param {ol.style.CustomRendering} customRenderingStyle Custom rendering style.
+ */
+ol.render.VectorContext.prototype.setCustomRenderingStyle = goog.abstractMethod;

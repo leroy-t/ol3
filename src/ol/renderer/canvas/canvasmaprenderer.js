@@ -170,6 +170,9 @@ ol.renderer.canvas.Map.prototype.renderFrame = function(frameState) {
 
   this.dispatchComposeEvent_(ol.render.EventType.PRECOMPOSE, frameState);
 
+  //Dispose foreground functions
+  frameState.foregroundRenderFunctions = undefined;
+
   var layerStatesArray = frameState.layerStatesArray;
   ol.array.stableSort(layerStatesArray, ol.renderer.Map.sortByZIndex);
 
@@ -193,6 +196,16 @@ ol.renderer.canvas.Map.prototype.renderFrame = function(frameState) {
   }
 
   ol.render.canvas.rotateAtOffset(context, -rotation, width / 2, height / 2);
+  
+  //Execute foreground renders
+  if (frameState.foregroundRenderFunctions) {
+    for (i = 0, ii = frameState.foregroundRenderFunctions.length; i < ii; ++i) {
+      var instruction = frameState.foregroundRenderFunctions[i];
+      instruction[0](instruction[1], instruction[2], instruction[3], instruction[4], instruction[5]);
+    }
+
+    frameState.foregroundRenderFunctions.splice(0, frameState.foregroundRenderFunctions.length);
+  }
 
   this.dispatchComposeEvent_(
       ol.render.EventType.POSTCOMPOSE, frameState);

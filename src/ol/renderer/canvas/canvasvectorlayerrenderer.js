@@ -112,7 +112,7 @@ ol.renderer.canvas.VectorLayer.prototype.composeFrame = function(frameState, lay
     ol.render.canvas.rotateAtOffset(replayContext, -rotation,
         width / 2, height / 2);
     replayGroup.replay(replayContext, pixelRatio, transform, rotation,
-        skippedFeatureUids);
+        skippedFeatureUids, null, frameState);
     if (vectorSource.getWrapX() && projection.canWrapX() &&
         !ol.extent.containsExtent(projectionExtent, extent)) {
       var startX = extent[0];
@@ -124,7 +124,7 @@ ol.renderer.canvas.VectorLayer.prototype.composeFrame = function(frameState, lay
         offsetX = worldWidth * world;
         transform = this.getTransform(frameState, offsetX);
         replayGroup.replay(replayContext, pixelRatio, transform, rotation,
-            skippedFeatureUids);
+            skippedFeatureUids, null, frameState);
         startX += worldWidth;
       }
       world = 0;
@@ -134,7 +134,7 @@ ol.renderer.canvas.VectorLayer.prototype.composeFrame = function(frameState, lay
         offsetX = worldWidth * world;
         transform = this.getTransform(frameState, offsetX);
         replayGroup.replay(replayContext, pixelRatio, transform, rotation,
-            skippedFeatureUids);
+            skippedFeatureUids, null, frameState);
         startX -= worldWidth;
       }
       // restore original transform for render and compose events
@@ -264,7 +264,7 @@ ol.renderer.canvas.VectorLayer.prototype.prepareFrame = function(frameState, lay
   var replayGroup =
       new ol.render.canvas.ReplayGroup(
           ol.renderer.vector.getTolerance(resolution, pixelRatio), extent,
-          resolution, vectorLayer.getRenderBuffer());
+          resolution, projection, vectorLayer.getRenderBuffer());
   vectorSource.loadFeatures(extent, resolution, projection);
   /**
    * @param {ol.Feature} feature Feature.

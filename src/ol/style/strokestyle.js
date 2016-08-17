@@ -61,6 +61,24 @@ ol.style.Stroke = function(opt_options) {
    * @type {string|undefined}
    */
   this.checksum_ = undefined;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|undefined}
+   */
+  this.preRender_ = options.preRender;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|undefined}
+   */
+  this.postRender_ = options.postRender;
+
+  /**
+   * @private
+   * @type {ol.style.StrokeRenderFunction|undefined}
+   */
+  this.foregroundRender_ = options.foregroundRender;
 };
 
 
@@ -121,6 +139,36 @@ ol.style.Stroke.prototype.getMiterLimit = function() {
  */
 ol.style.Stroke.prototype.getWidth = function() {
   return this.width_;
+};
+
+
+/**
+ * Get the pre-render function, executed before OL3 normal rendering pass.
+ * @return {ol.style.StrokeRenderFunction|undefined} Render function.
+ * @api
+ */
+ol.style.Stroke.prototype.getPreRender = function() {
+  return this.preRender_;
+};
+
+
+/**
+ * Get the post-render function, executed after OL3 normal rendering pass.
+ * @return {ol.style.StrokeRenderFunction|undefined} Render function.
+ * @api
+ */
+ol.style.Stroke.prototype.getPostRender = function() {
+  return this.postRender_;
+};
+
+
+/**
+ * Get the render function, executed after map normal rendering pass.
+ * @return {ol.style.StrokeRenderFunction|undefined} Render function.
+ * @api
+ */
+ol.style.Stroke.prototype.getForegroundRender = function() {
+  return this.foregroundRender_;
 };
 
 
@@ -199,6 +247,39 @@ ol.style.Stroke.prototype.setMiterLimit = function(miterLimit) {
 ol.style.Stroke.prototype.setWidth = function(width) {
   this.width_ = width;
   this.checksum_ = undefined;
+};
+
+
+/**
+ * Set the pre-render function.
+ *
+ * @param {ol.style.StrokeRenderFunction|undefined} renderFunction Render function.
+ * @api
+ */
+ol.style.Stroke.prototype.setPreRender = function(renderFunction) {
+  this.preRender_ = renderFunction;
+};
+
+
+/**
+ * Set the post-render function.
+ *
+ * @param {ol.style.StrokeRenderFunction|undefined} renderFunction Render function.
+ * @api
+ */
+ol.style.Stroke.prototype.setPostRender = function(renderFunction) {
+  this.postRender_ = renderFunction;
+};
+
+
+/**
+ * Set the foreground render function, executed after map normal rendering pass.
+ *
+ * @param {ol.style.StrokeRenderFunction|undefined} renderFunction Render function.
+ * @api
+ */
+ol.style.Stroke.prototype.setForegroundRender = function(renderFunction) {
+  this.foregroundRender_ = renderFunction;
 };
 
 

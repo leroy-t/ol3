@@ -136,7 +136,10 @@ ol.style.RegularShape = function(options) {
     rotateWithView: rotateWithView,
     rotation: options.rotation !== undefined ? options.rotation : 0,
     scale: 1,
-    snapToPixel: snapToPixel
+    snapToPixel: snapToPixel,
+    preRender: options.preRender,
+    postRender: options.postRender,
+    foregroundRender: options.foregroundRender
   });
 
 };
