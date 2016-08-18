@@ -6899,6 +6899,13 @@ olx.style.RegularShapeOptions.prototype.rotateWithView;
  */
 olx.style.RegularShapeOptions.prototype.atlasManager;
 
+/**
+ * @typedef {{pattern: (Image|HTMLCanvasElement),
+ *     baseLineOffset: (number|undefined),
+ *     checksum: string}}
+ * @api
+ */
+olx.style.StrokePatternOptions;
 
 /**
  * A rendering function called before the "main" rendering process.
@@ -6926,6 +6933,7 @@ olx.style.RegularShapeOptions.prototype.foregroundRender;
 
 /**
  * @typedef {{color: (ol.Color|string|undefined),
+ *     strokePattern: (olx.style.StrokePatternOptions|undefined),
  *     lineCap: (string|undefined),
  *     lineJoin: (string|undefined),
  *     lineDash: (Array.<number>|undefined),
@@ -6945,6 +6953,14 @@ olx.style.StrokeOptions;
  * @api
  */
 olx.style.StrokeOptions.prototype.color;
+
+
+/**
+ * Stroke pattern. Default null. If present, the pattern will be used instead of the color..
+ * @type {olx.style.StrokePatternOptions|undefined}
+ * @api
+ */
+olx.style.StrokeOptions.prototype.strokePattern;
 
 
 /**

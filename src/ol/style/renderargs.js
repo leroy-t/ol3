@@ -269,6 +269,7 @@ ol.style.FillRenderArgs.prototype.setPath = function(context, coordinates) {
  * @param {number} resolution The current resolution of the viewport.
  * @param {ol.proj.Projection} projection The current projection of the viewport.
  * @param {string} color The stroke color.
+ * @param {ol.style.StrokePattern} strokePattern The stroke pattern.
  * @param {string} lineCap The line cap style.
  * @param {Array<number>} lineDash The dash style definition.
  * @param {string} lineJoin The line join style.
@@ -279,12 +280,13 @@ ol.style.FillRenderArgs.prototype.setPath = function(context, coordinates) {
  * @api
  */
 ol.style.StrokeRenderArgs = function(tolerance, maximumExtent, resolution, projection,
-                                     color, lineCap, lineDash, lineJoin,
+                                     color, strokePattern, lineCap, lineDash, lineJoin,
                                      miterLimit, width, closePath) {
 
   ol.style.ReplayArgs.call(this, tolerance, maximumExtent, resolution, projection);
 
   this.color = color;
+  this.strokePattern = strokePattern;
   this.lineCap = lineCap;
   this.lineDash = lineDash;
   this.lineJoin = lineJoin;
@@ -296,7 +298,8 @@ goog.inherits(ol.style.StrokeRenderArgs, ol.style.ReplayArgs);
 
 ol.style.StrokeRenderArgs.prototype.clone = function() {
   var args =  new ol.style.StrokeRenderArgs(this.tolerance, this.maxExtent, this.resolution, this.projection,
-    this.color, this.lineCap, this.lineDash, this.lineJoin, this.miterLimit, this.width, this.closePath);
+    this.color, this.strokePattern, this.lineCap, this.lineDash, this.lineJoin, this.miterLimit,
+    this.width, this.closePath);
   args.pixelRatio = this.pixelRatio;
   args.resolution = this.resolution;
   args.viewRotation = this.viewRotation;

@@ -840,7 +840,8 @@ ol.render.canvas.Immediate.prototype.setFillStrokeStyle = function(fillStyle, st
       miterLimit: strokeStyleMiterLimit !== undefined ?
           strokeStyleMiterLimit : ol.render.canvas.defaultMiterLimit,
       strokeStyle: ol.color.asString(strokeStyleColor ?
-          strokeStyleColor : ol.render.canvas.defaultStrokeStyle)
+        strokeStyleColor : ol.render.canvas.defaultStrokeStyle),
+      strokePattern: strokeStyle.getStrokePattern()
     };
   }
 };

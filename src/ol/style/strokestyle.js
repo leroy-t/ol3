@@ -1,8 +1,102 @@
 goog.provide('ol.style.Stroke');
+goog.provide('ol.style.StrokePattern');
 
 goog.require('goog.crypt');
 goog.require('goog.crypt.Md5');
 goog.require('ol.color');
+
+
+/**
+ * @classdesc
+ * The definition of the pattern used as stroke, and its position relative to the base line.
+ *
+ * @constructor
+ * @param {olx.style.StrokePatternOptions} options
+ * @api
+ */
+ol.style.StrokePattern = function(options) {
+  /**
+   * @private
+   * @type {HTMLCanvasElement|undefined}
+   */
+  this.canvas_ = this.getCanvas_(options.pattern);
+
+  /**
+   * @private
+   * @type {number}
+   */
+  this.baseLineOffset_ = options.baseLineOffset !== undefined ? options.baseLineOffset : 0;
+
+  /**
+   * @private
+   * @type {string}
+   */
+  this.checksum_ = options.checksum;
+};
+
+
+/**
+ * Get the stroke pattern canvas.
+ * @return {HTMLCanvasElement|undefined} Canvas containing the pattern.
+ * @api
+ */
+ol.style.StrokePattern.prototype.getCanvas = function() {
+  return this.canvas_;
+};
+
+
+/**
+ * Get the offset from the base line.
+ * @return {number} offset.
+ * @api
+ */
+ol.style.StrokePattern.prototype.getBaseLineOffset = function() {
+  return this.baseLineOffset_;
+};
+
+/**
+ * Get the checksum of the pattern. This can be any unique identifier.
+ * @return {string} checksum.
+ * @api
+ */
+ol.style.StrokePattern.prototype.getChecksum = function() {
+  return this.checksum_;
+};
+
+/**
+ * Get the Canvas representing the pattern. If 'pattern' is already a Canvas, returns it, otherwise creates a new
+ * Canvas from the Image.
+ * @param {Image|HTMLCanvasElement} pattern
+ * @returns {HTMLCanvasElement|undefined}
+ * @private
+ */
+ol.style.StrokePattern.prototype.getCanvas_ = function(pattern) {
+  if (!pattern) {
+    return undefined;
+  }
+
+  if (pattern instanceof HTMLCanvasElement) {
+    //Pattern is already a Canvas
+    return pattern;
+  }
+
+  if (pattern instanceof Image) {
+    //Pattern is an image. Need to build an offscreen canvas
+
+    //Prepare canvas
+    var offscreenCanvas = document.createElement("canvas");
+    offscreenCanvas.width = pattern.width;
+    offscreenCanvas.height = pattern.height;
+    var context = offscreenCanvas.getContext("2d");
+
+    //Draw pattern
+    context.drawImage(pattern, 0, 0);
+
+    return /** @type {HTMLCanvasElement} */ (offscreenCanvas);
+  }
+
+  return undefined;
+};
 
 
 /**
@@ -25,6 +119,13 @@ ol.style.Stroke = function(opt_options) {
    * @type {ol.Color|string}
    */
   this.color_ = options.color !== undefined ? options.color : null;
+
+  /**
+   * @private
+   * @type {ol.style.StrokePattern}
+   */
+  this.strokePattern_ = options.strokePattern !== undefined ?
+    new ol.style.StrokePattern(options.strokePattern) : null;
 
   /**
    * @private
@@ -89,6 +190,16 @@ ol.style.Stroke = function(opt_options) {
  */
 ol.style.Stroke.prototype.getColor = function() {
   return this.color_;
+};
+
+
+/**
+ * Get the stroke pattern.
+ * @return {ol.style.StrokePattern} Stroke pattern.
+ * @api
+ */
+ol.style.Stroke.prototype.getStrokePattern = function() {
+  return this.strokePattern_;
 };
 
 
@@ -180,6 +291,23 @@ ol.style.Stroke.prototype.getForegroundRender = function() {
  */
 ol.style.Stroke.prototype.setColor = function(color) {
   this.color_ = color;
+  this.checksum_ = undefined;
+};
+
+
+/**
+ * Set the stroke pattern.
+ *
+ * @param {ol.style.StrokePattern|olx.style.StrokePatternOptions} strokePattern Stroke pattern.
+ * @api
+ */
+ol.style.Stroke.prototype.setStrokePattern = function(strokePattern) {
+  if (strokePattern && !(strokePattern instanceof ol.style.StrokePattern)) {
+    //Assume 'strokePattern' is an instance of olx.style.StrokePatternOptions
+    strokePattern = new ol.style.StrokePattern(strokePattern);
+  }
+
+  this.strokePattern_ = strokePattern;
   this.checksum_ = undefined;
 };
 
@@ -288,9 +416,18 @@ ol.style.Stroke.prototype.setForegroundRender = function(renderFunction) {
  */
 ol.style.Stroke.prototype.getChecksum = function() {
   if (this.checksum_ === undefined) {
+
+    var colorString = "-";
+    if (this.color_ instanceof ol.style.StrokePattern) {
+      colorString = new Date().getTime();
+    } else {
+      colorString = ol.color.asString(this.color_);
+    }
+
     var raw = 's' +
-        (this.color_ ?
-            ol.color.asString(this.color_) : '-') + ',' +
+      colorString + ',' +
+        (this.strokePattern_ !== undefined ?
+            this.strokePattern_.getChecksum() : '-') + ',' +
         (this.lineCap_ !== undefined ?
             this.lineCap_.toString() : '-') + ',' +
         (this.lineDash_ ?
