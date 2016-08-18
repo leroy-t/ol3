@@ -1,0 +1,20 @@
+---
+layout: example.html
+title: Pre- and post-rendering drawing - Points
+shortdesc: Add pre- and post-rendering drawing instructions to Point features.
+docs: >
+  <p>This example shows how to add canvas instructions before and after OL3 standard drawing phase. Click on plane icons
+  to select them.</p>
+  <p>Pre- and post-render functions allows to "decorate" an icon with pixel-based elements (for instance, a text 5
+    pixels below the icon, or smaller icons around the main one). As the feature itself is a parameter of the function,
+    drawings can be based on feature properties.</p>
+  <p><code>ol.style.ImageRenderArgs</code> allow easy computation of the extent of the icon.</p>
+  <p>Beside pre- and post-render functions, there are also foreground-render functions, that are rendered once
+    all other layers have been rendered. Z-order of layers and features are maintained while rendering foreground-render
+    functions.</p>
+  <p>Note: elements added through pre- and post-render functions are not clickable.</p>
+tags: "features, style, rendering, canvas"
+resources:
+  - rendering-primitives.js
+---
+<div id="map" class="map"></div>

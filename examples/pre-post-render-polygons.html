@@ -1,0 +1,25 @@
+---
+layout: example.html
+title: Pre- and post-rendering drawing - Polygons
+shortdesc: Add pre- and post-rendering drawing instructions to Polygon features.
+docs: >
+  <p>This example shows how to add canvas instructions before and after OL3 standard drawing phase. Click on plane icons
+    to select them.</p>
+  <p>Pre- and post-render functions allows to "decorate" a polygon with pixel-based elements (for instance, additional
+    text, hatching patterns, or other elements). As the feature itself is a parameter of the function, drawings can be
+    based on feature properties.</p>
+  <p>Extension points on a Polygon are:<ul>
+    <li>Before drawing the fill of the Polygon</li>
+    <li>After drawing the fill of the Polygon</li>
+    <li>Before drawing the stroke of the Polygon</li>
+    <li>After drawing the stroke of the Polygon</li>
+  </ul></p>
+  <p>Beside pre- and post-render functions, there are also foreground-render functions, that are rendered once
+    all other layers have been rendered. Z-order of layers and features are maintained while rendering foreground-render
+    functions.</p>
+  <p>Note: elements added through pre- and post-render functions are not clickable.</p>
+tags: "features, style, rendering, canvas"
+resources:
+- rendering-primitives.js
+---
+<div id="map" class="map"></div>
