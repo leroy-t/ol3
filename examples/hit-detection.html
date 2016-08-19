@@ -1,0 +1,43 @@
+---
+layout: example.html
+title: New Hit-detection implementation
+shortdesc: New hit detection implementation.
+docs: >
+  <p>This example shows the new hit detection algorithm.</p>
+  <p>OL3 uses a two-phase algorithm to get the list of features under a specific pixel.
+    <ul>
+      <li>First, a "buffer" is computed around the hit detection pixel. The width of this buffer is controlled by the
+      'renderBuffer' property specified during the creation of a <code>ol.layer.Vector</code>.</li>
+      <li>Then, the extent is compared with the extent of every geometry in the layer. If the extent of the buffer and the
+      geometry intersect, the feature is eligible for finer-grain hit-detection.</li>
+      <li>Each eligible feature is then rendered to a 1-pixel canvas, corresponding to the target hit-detection pixel. If
+      after rendering, the pixel has an opacity superior to 0, the feature is under the provided pixel.</li>
+    </ul>
+    </p>
+  <p>This way of managing hit-detection has several drawbacks:
+    <ul>
+      <li>Checking a pixel require to evaluate every feature in the layer.</li>
+      <li>The extent is not accurately tested: a text object is represented as a point geometry having a 'text' style.
+        The text itself is NOT considered in the extent, only the anchor point is evaluated. On text larger than twice the
+        value of 'renderBuffer', this leads to part of the text not being clickable.</li>
+      <li>A workaround to the aforementioned problem is to increase the value of 'renderBuffer'. But this will in return
+        increase the number of eligible features for finer-grain hit-detection, and thus degrade performances (and not to
+        mention the fact that determining the appropriate value of 'renderBuffer' is not a trivial task if text width is
+        unknown before runtime).</li>
+    </ul>
+  </p>
+  <p>The new implementation of hit-detection retains the two-phase approach, and the finer-grain mechanism based on pixel
+    opacity checking. Only the first phase is replaced.</p>
+  <p>OL3 uses RBush for hit-detection purposes at the vector source level. The idea is to use the same spatial index
+    structure to build the list of eligible features. During the rendering phase of a layer, the extent in pixels of every
+    feature is stored in a Rbush structure (one for each layer). When doing hit-detection operations, the target pixel is
+    checked against Rbush, to return every feature containing it. The obtained list of features can then be processed by
+    the second phase algorithm.</p>
+  <p>The main benefit of this new implementation is that results are coherent, whatever the size of the text/icons used and
+    the value of 'renderBuffer'. Due to the way Rbush works, the eligible features list creation time is also less dependant
+    on the number of features in the layer. This should have a positive impact on "mouse over" scenarii.</p>
+tags: "features, style, rendering, canvas, hit detection"
+resources:
+- rendering-primitives.js
+---
+<div id="map" class="map"></div>

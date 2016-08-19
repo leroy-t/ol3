@@ -6,6 +6,66 @@ function drawRectangle(context, extent, pathRenderFunction) {
   pathRenderFunction(context);
 }
 
+function drawRoundedRectangle(context, pixelRatio, x, y, width, height, cornerRadius, snapPixels) {
+  if (!context) {
+    throw new Error("Context cannot be null.");
+  }
+  if (typeof pixelRatio !== "number") {
+    throw new Error("Pixel ratio must be a number.");
+  }
+  if (typeof x !== "number") {
+    throw new Error("X must be a number.");
+  }
+  if (typeof y !== "number") {
+    throw new Error("Y must be a number.");
+  }
+  if (typeof width !== "number") {
+    throw new Error("Width must be a number.");
+  }
+  if (typeof height !== "number") {
+    throw new Error("Height must be a number.");
+  }
+  if (typeof cornerRadius !== "number") {
+    cornerRadius = 0;
+  }
+
+  //Take pixelRatio into account
+  pixelRatio = 1;
+  x *= pixelRatio;
+  y *= pixelRatio;
+  width *= pixelRatio;
+  height *= pixelRatio;
+  cornerRadius *= pixelRatio;
+
+  if (cornerRadius === 0) {
+    //Draw a simple rectangle
+    context.rect(x, y, width, height);
+
+    return;
+  }
+  var minx = snapPixels ? ~~x + 0.5 : x;
+  var miny = snapPixels ? ~~y + 0.5 : y;
+  var maxx = snapPixels ? ~~(x + width) + 0.5 : x + width;
+  var maxy = snapPixels ? ~~(y + height) + 0.5 : y + height;
+  context.moveTo(minx + cornerRadius, miny);
+  //Top
+  context.lineTo(maxx - cornerRadius, miny);
+  //Top-right corner
+  context.quadraticCurveTo(maxx, miny, maxx, miny + cornerRadius);
+  //Right
+  context.lineTo(maxx, maxy - cornerRadius);
+  //Bottom-right corner
+  context.quadraticCurveTo(maxx, maxy, maxx - cornerRadius, maxy);
+  //Bottom
+  context.lineTo(minx + cornerRadius, maxy);
+  //Bottom-left corner
+  context.quadraticCurveTo(minx, maxy, minx, maxy - cornerRadius);
+  //Left
+  context.lineTo(minx, miny + cornerRadius);
+  //Top-left corner
+  context.quadraticCurveTo(minx, miny, minx + cornerRadius, miny);
+}
+
 function buildPathRenderFunction(fill, stroke) {
   var func = function (context) {
     configureContextStyle(context, fill, stroke);
